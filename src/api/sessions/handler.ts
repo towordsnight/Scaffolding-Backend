@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import pool from '../../db/client';
-import { getSession, setSession, extendTTL } from '../../redis/session-store';
+import { getSession, setSession, extendTTL, deleteSession } from '../../redis/session-store';
 import { AuthRequest } from '../auth/middleware';
 import type { RedisSession } from '../../types/schema';
 import { checkIdleThreshold } from '../../services/adaptive-engine';
+import { updateIdleStreak } from '../../services/cognitive-state';
 
 // POST /api/sessions
 // Body: { problem_id? }
@@ -60,9 +61,55 @@ export async function heartbeat(req: Request, res: Response): Promise<void> {
     const updated = { ...redisSession, idle_streak_seconds: idleStreakS };
     await setSession(sessionId, updated);
     intervention = await checkIdleThreshold(sessionId, studentId, idleStreakS);
+    if (intervention) {
+      await updateIdleStreak(studentId, idleStreakS);
+    }
   }
 
   res.status(200).json({ intervention: intervention ?? null });
+}
+
+// POST /api/sessions/:id/end
+// Marks the session finished and increments sessions_completed on the student.
+// Uses RETURNING on the sessions UPDATE so the increment only fires if the session
+// existed, belonged to this student, and was not already ended — race-safe.
+export async function endSession(req: Request, res: Response): Promise<void> {
+  const studentId = (req as AuthRequest).studentId;
+  const { id: sessionId } = req.params;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const update = await client.query<{ id: string }>(
+      `UPDATE sessions SET ended_at = now()
+        WHERE id = $1 AND student_id = $2 AND ended_at IS NULL
+        RETURNING id`,
+      [sessionId, studentId],
+    );
+
+    if (update.rows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    await client.query(
+      `UPDATE students SET sessions_completed = sessions_completed + 1, updated_at = now()
+        WHERE id = $1`,
+      [studentId],
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  await deleteSession(sessionId);
+  res.status(200).json({ ended: true });
 }
 
 // GET /api/sessions/:id

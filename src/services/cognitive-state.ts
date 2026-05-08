@@ -16,15 +16,17 @@ export async function recalcStressAndThresholds(studentId: string): Promise<void
   const result = await pool.query<{
     stress_level: number;
     consecutive_errors: number;
+    idle_streak_s: number;
     self_report_weight: number;
     adhd_flag: boolean;
     course_level: string;
     sessions_completed: number;
     error_threshold: number;
+    idle_threshold_s: number;
   }>(
-    `SELECT cs.stress_level, cs.consecutive_errors, cs.self_report_weight,
+    `SELECT cs.stress_level, cs.consecutive_errors, cs.idle_streak_s, cs.self_report_weight,
             s.adhd_flag, s.course_level, s.sessions_completed,
-            ac.error_threshold
+            ac.error_threshold, ac.idle_threshold_s
        FROM cognitive_state cs
        JOIN students s ON s.id = cs.student_id
        JOIN adaptive_config ac ON ac.student_id = cs.student_id
@@ -35,9 +37,11 @@ export async function recalcStressAndThresholds(studentId: string): Promise<void
   if (result.rows.length === 0) return;
   const r = result.rows[0];
 
-  const weight  = decayWeight(r.sessions_completed);
-  const behavioral = behavioralStressScore(r.consecutive_errors, r.error_threshold);
-  const newStress  = Math.round(weight * r.stress_level + (1 - weight) * behavioral) as 0 | 1 | 2;
+  const weight         = decayWeight(r.sessions_completed);
+  const errorBehavioral = behavioralStressScore(r.consecutive_errors, r.error_threshold);
+  const idlePressure    = r.idle_streak_s >= r.idle_threshold_s ? 1 : 0;
+  const behavioral      = Math.min(2, errorBehavioral + idlePressure) as 0 | 1 | 2;
+  const newStress       = Math.round(weight * r.stress_level + (1 - weight) * behavioral) as 0 | 1 | 2;
   const clampedStress = Math.max(0, Math.min(2, newStress)) as 0 | 1 | 2;
 
   const isHighNeed = r.adhd_flag || clampedStress === 2;
@@ -76,16 +80,27 @@ export async function recalcStressAndThresholds(studentId: string): Promise<void
 export async function updateConsecutiveErrors(studentId: string, correct: boolean): Promise<void> {
   if (correct) {
     await pool.query(
-      `UPDATE cognitive_state SET consecutive_errors=0, updated_at=now() WHERE student_id=$1`,
+      `UPDATE cognitive_state SET consecutive_errors=0, idle_streak_s=0, updated_at=now()
+        WHERE student_id=$1`,
       [studentId],
     );
   } else {
     await pool.query(
-      `UPDATE cognitive_state SET consecutive_errors=consecutive_errors+1, updated_at=now()
+      `UPDATE cognitive_state SET consecutive_errors=consecutive_errors+1, idle_streak_s=0, updated_at=now()
         WHERE student_id=$1`,
       [studentId],
     );
   }
+  await recalcStressAndThresholds(studentId);
+}
+
+// Persists the current idle streak when the heartbeat detects a threshold breach,
+// then recalculates stress so adaptive_config reflects the student's disengagement.
+export async function updateIdleStreak(studentId: string, idleStreakS: number): Promise<void> {
+  await pool.query(
+    `UPDATE cognitive_state SET idle_streak_s=$1, updated_at=now() WHERE student_id=$2`,
+    [idleStreakS, studentId],
+  );
   await recalcStressAndThresholds(studentId);
 }
 

@@ -1,4 +1,4 @@
-import { decayWeight, behavioralStressScore, updateConsecutiveErrors, updateFromCheckin, recalcStressAndThresholds } from './cognitive-state';
+import { decayWeight, behavioralStressScore, updateConsecutiveErrors, updateFromCheckin, updateIdleStreak, recalcStressAndThresholds } from './cognitive-state';
 import pool from '../db/client';
 
 jest.mock('../db/client', () => ({
@@ -38,8 +38,9 @@ describe('recalcStressAndThresholds', () => {
     const client = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
     (mockPool.query as jest.Mock).mockResolvedValue({
       rows: [{
-        stress_level: 1, consecutive_errors: 0, self_report_weight: 0.8,
-        adhd_flag: false, course_level: 'intro', sessions_completed: 0, error_threshold: 3,
+        stress_level: 1, consecutive_errors: 0, idle_streak_s: 0, self_report_weight: 0.8,
+        adhd_flag: false, course_level: 'intro', sessions_completed: 0,
+        error_threshold: 3, idle_threshold_s: 90,
       }],
     });
     (mockPool.connect as jest.Mock).mockResolvedValue(client);
@@ -55,8 +56,9 @@ describe('recalcStressAndThresholds', () => {
     const client = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
     (mockPool.query as jest.Mock).mockResolvedValue({
       rows: [{
-        stress_level: 0, consecutive_errors: 0, self_report_weight: 0.8,
-        adhd_flag: true, course_level: 'intro', sessions_completed: 0, error_threshold: 3,
+        stress_level: 0, consecutive_errors: 0, idle_streak_s: 0, self_report_weight: 0.8,
+        adhd_flag: true, course_level: 'intro', sessions_completed: 0,
+        error_threshold: 3, idle_threshold_s: 60,
       }],
     });
     (mockPool.connect as jest.Mock).mockResolvedValue(client);
@@ -69,12 +71,56 @@ describe('recalcStressAndThresholds', () => {
     // idle=60, error=2, hints=4 for high-need
     expect(adaptiveUpdate[1]).toEqual([60, 2, 4, 'brief', 'stu-adhd']);
   });
+
+  it('adds idle pressure when idle_streak_s >= idle_threshold_s', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
+    // sessions_completed=6 → weight=0.2 so behavioral (80%) dominates
+    // stress_level=0, consecutive_errors=0 → errorBehavioral=0
+    // idle_streak_s=120 >= idle_threshold_s=90 → idlePressure=1 → behavioral=1
+    // newStress = round(0.2*0 + 0.8*1) = round(0.8) = 1
+    (mockPool.query as jest.Mock).mockResolvedValue({
+      rows: [{
+        stress_level: 0, consecutive_errors: 0, idle_streak_s: 120, self_report_weight: 0.2,
+        adhd_flag: false, course_level: 'intro', sessions_completed: 6,
+        error_threshold: 3, idle_threshold_s: 90,
+      }],
+    });
+    (mockPool.connect as jest.Mock).mockResolvedValue(client);
+
+    await recalcStressAndThresholds('stu-1');
+
+    const cogUpdate = client.query.mock.calls.find(
+      (c: unknown[]) => (c[0] as string).includes('cognitive_state'),
+    ) as [string, unknown[]];
+    expect(cogUpdate[1][0]).toBe(1); // stress written as 1
+  });
+
+  it('no idle pressure when idle_streak_s < idle_threshold_s', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
+    // same as above but idle_streak_s=60 < idle_threshold_s=90 → idlePressure=0 → behavioral=0
+    // newStress = round(0.2*0 + 0.8*0) = 0
+    (mockPool.query as jest.Mock).mockResolvedValue({
+      rows: [{
+        stress_level: 0, consecutive_errors: 0, idle_streak_s: 60, self_report_weight: 0.2,
+        adhd_flag: false, course_level: 'intro', sessions_completed: 6,
+        error_threshold: 3, idle_threshold_s: 90,
+      }],
+    });
+    (mockPool.connect as jest.Mock).mockResolvedValue(client);
+
+    await recalcStressAndThresholds('stu-1');
+
+    const cogUpdate = client.query.mock.calls.find(
+      (c: unknown[]) => (c[0] as string).includes('cognitive_state'),
+    ) as [string, unknown[]];
+    expect(cogUpdate[1][0]).toBe(0); // stress stays at 0
+  });
 });
 
 // ── updateConsecutiveErrors ───────────────────────────────────────────────────
 
 describe('updateConsecutiveErrors', () => {
-  it('resets consecutive_errors to 0 on correct answer', async () => {
+  it('resets consecutive_errors and idle_streak_s on correct answer', async () => {
     const client = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
     (mockPool.query as jest.Mock)
       .mockResolvedValueOnce({ rows: [] }) // UPDATE reset
@@ -85,9 +131,10 @@ describe('updateConsecutiveErrors', () => {
 
     const resetCall = (mockPool.query as jest.Mock).mock.calls[0];
     expect((resetCall[0] as string)).toContain('consecutive_errors=0');
+    expect((resetCall[0] as string)).toContain('idle_streak_s=0');
   });
 
-  it('increments consecutive_errors on incorrect answer', async () => {
+  it('increments consecutive_errors and resets idle_streak_s on incorrect answer', async () => {
     (mockPool.query as jest.Mock)
       .mockResolvedValueOnce({ rows: [] }) // UPDATE increment
       .mockResolvedValueOnce({ rows: [] }); // recalc SELECT (no rows)
@@ -96,6 +143,23 @@ describe('updateConsecutiveErrors', () => {
 
     const incrCall = (mockPool.query as jest.Mock).mock.calls[0];
     expect((incrCall[0] as string)).toContain('consecutive_errors+1');
+    expect((incrCall[0] as string)).toContain('idle_streak_s=0');
+  });
+});
+
+// ── updateIdleStreak ──────────────────────────────────────────────────────────
+
+describe('updateIdleStreak', () => {
+  it('writes idle_streak_s to cognitive_state and triggers recalc', async () => {
+    (mockPool.query as jest.Mock)
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE idle_streak_s
+      .mockResolvedValueOnce({ rows: [] }); // recalc SELECT (no rows → early return)
+
+    await updateIdleStreak('stu-1', 120);
+
+    const updateCall = (mockPool.query as jest.Mock).mock.calls[0];
+    expect((updateCall[0] as string)).toContain('idle_streak_s');
+    expect(updateCall[1]).toEqual([120, 'stu-1']);
   });
 });
 
