@@ -13,11 +13,13 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";   -- gen_random_uuid()
 -- ENUMS
 -- ============================================================================
 
-CREATE TYPE topic          AS ENUM ('kvl', 'kcl', 'phasors', 'impedance');
-CREATE TYPE difficulty     AS ENUM ('easy', 'medium', 'hard');
-CREATE TYPE hint_depth     AS ENUM ('socratic', 'concrete');
+CREATE TYPE topic           AS ENUM ('kvl', 'kcl', 'phasors', 'impedance', 'thevenin');
+CREATE TYPE difficulty      AS ENUM ('easy', 'medium', 'hard');
+CREATE TYPE hint_depth      AS ENUM ('socratic', 'concrete');
 CREATE TYPE response_length AS ENUM ('short', 'brief', 'medium');
-CREATE TYPE course_level   AS ENUM ('intro', 'intermediate', 'advanced');
+CREATE TYPE course_level    AS ENUM ('intro', 'intermediate', 'advanced');
+CREATE TYPE learner_profile AS ENUM ('starter', 'exploring', 'distracted', 'independent');
+CREATE TYPE step_type       AS ENUM ('planning', 'mcq', 'numeric', 'open');
 
 -- ============================================================================
 -- CORE PROFILE  (live, mutable)
@@ -32,6 +34,7 @@ CREATE TABLE students (
     cold_start_done     BOOLEAN NOT NULL DEFAULT FALSE,
     consent_given_at    TIMESTAMPTZ,                     -- NULL until consent logged
     course_level        course_level NOT NULL DEFAULT 'intro',
+    learner_profile     learner_profile,                 -- NULL until set during onboarding
     sessions_completed  INTEGER NOT NULL DEFAULT 0,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -175,6 +178,43 @@ CREATE TABLE consent_log (
 );
 
 -- ============================================================================
+-- MULTI-STEP PROBLEMS  (per-profile scaffolded variants)
+-- ============================================================================
+
+CREATE TABLE problem_variants (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    problem_id      UUID NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    learner_profile learner_profile NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (problem_id, learner_profile)
+);
+
+CREATE TABLE problem_steps (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    variant_id              UUID NOT NULL REFERENCES problem_variants(id) ON DELETE CASCADE,
+    step_order              INTEGER NOT NULL,
+    step_type               step_type NOT NULL,
+    prompt_text             TEXT NOT NULL,
+    options                 JSONB,           -- mcq only: [{key, text, is_correct}]
+    ground_truth_answer     NUMERIC,         -- numeric only; NULL = ungraded placeholder
+    tolerance               REAL DEFAULT 0.01,
+    misconception_triggers  JSONB,           -- stored, evaluated in Sprint 3
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (variant_id, step_order)
+);
+
+CREATE TABLE problem_step_attempts (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id      UUID NOT NULL REFERENCES sessions(id) ON DELETE RESTRICT,
+    student_id      UUID NOT NULL REFERENCES students(id) ON DELETE RESTRICT,
+    step_id         UUID NOT NULL REFERENCES problem_steps(id) ON DELETE RESTRICT,
+    submitted_value TEXT NOT NULL,
+    correct         BOOLEAN,                 -- NULL when step is ungraded (no ground truth yet)
+    time_spent_s    INTEGER NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================================
 -- APPEND-ONLY RULES  (block UPDATE and DELETE on audit tables)
 -- ============================================================================
 
@@ -196,6 +236,9 @@ CREATE RULE no_delete_checkin_responses AS ON DELETE TO checkin_responses DO INS
 CREATE RULE no_update_consent_log AS ON UPDATE TO consent_log DO INSTEAD NOTHING;
 CREATE RULE no_delete_consent_log AS ON DELETE TO consent_log DO INSTEAD NOTHING;
 
+CREATE RULE no_update_problem_step_attempts AS ON UPDATE TO problem_step_attempts DO INSTEAD NOTHING;
+CREATE RULE no_delete_problem_step_attempts AS ON DELETE TO problem_step_attempts DO INSTEAD NOTHING;
+
 -- ============================================================================
 -- INDEXES
 -- ============================================================================
@@ -207,6 +250,11 @@ CREATE INDEX idx_problem_attempts_session   ON problem_attempts(session_id);
 CREATE INDEX idx_hint_events_student        ON hint_events(student_id);
 CREATE INDEX idx_hint_events_session        ON hint_events(session_id);
 CREATE INDEX idx_problems_topic_difficulty  ON problems(topic, difficulty);
+CREATE INDEX idx_problem_variants_profile   ON problem_variants(problem_id, learner_profile);
+CREATE INDEX idx_problem_steps_variant      ON problem_steps(variant_id, step_order);
+CREATE INDEX idx_problem_step_attempts_student ON problem_step_attempts(student_id);
+CREATE INDEX idx_problem_step_attempts_session ON problem_step_attempts(session_id);
+CREATE INDEX idx_problem_step_attempts_step    ON problem_step_attempts(step_id);
 
 -- ============================================================================
 -- VIEW: student_profile
@@ -222,6 +270,7 @@ SELECT
     s.cold_start_done,
     s.consent_given_at,
     s.course_level,
+    s.learner_profile,
     s.sessions_completed,
     cs.stress_level,
     cs.focus_quality,

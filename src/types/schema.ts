@@ -5,11 +5,13 @@
 // ENUMS
 // ============================================================================
 
-export type Topic = 'kvl' | 'kcl' | 'phasors' | 'impedance';
+export type Topic = 'kvl' | 'kcl' | 'phasors' | 'impedance' | 'thevenin';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type HintDepth = 'socratic' | 'concrete';
 export type ResponseLength = 'short' | 'brief' | 'medium';
 export type CourseLevel = 'intro' | 'intermediate' | 'advanced';
+export type LearnerProfile = 'starter' | 'exploring' | 'distracted' | 'independent';
+export type StepType = 'planning' | 'mcq' | 'numeric' | 'open';
 
 // ============================================================================
 // CORE PROFILE
@@ -24,6 +26,7 @@ export interface Student {
   cold_start_done: boolean;
   consent_given_at: Date | null;
   course_level: CourseLevel;
+  learner_profile: LearnerProfile | null;
   sessions_completed: number;
   created_at: Date;
   updated_at: Date;
@@ -69,6 +72,48 @@ export interface CohortPrior {
   topic: Topic;
   semester: string;            // e.g. '2026-spring'
   avg_tier: number;
+}
+
+export interface ProblemVariant {
+  id: string;
+  problem_id: string;
+  learner_profile: LearnerProfile;
+  created_at: Date;
+}
+
+export interface McqOption {
+  key: string;                 // e.g. 'A', 'B', 'C'
+  text: string;
+  is_correct: boolean;         // stripped from public API responses
+}
+
+export interface MisconceptionTrigger {
+  condition: string;           // free-form for MVP; eval logic deferred to Sprint 3
+  hint_text: string;
+}
+
+export interface ProblemStep {
+  id: string;
+  variant_id: string;
+  step_order: number;
+  step_type: StepType;
+  prompt_text: string;
+  options: McqOption[] | null;             // mcq only
+  ground_truth_answer: number | null;      // numeric only; null = ungraded
+  tolerance: number | null;
+  misconception_triggers: MisconceptionTrigger[] | null;
+  created_at: Date;
+}
+
+export interface ProblemStepAttempt {
+  id: string;
+  session_id: string;
+  student_id: string;
+  step_id: string;
+  submitted_value: string;
+  correct: boolean | null;     // null when step has no ground truth yet
+  time_spent_s: number;
+  created_at: Date;
 }
 
 // ============================================================================
@@ -188,6 +233,7 @@ export interface StudentProfile {
   cold_start_done: boolean;
   consent_given_at: Date | null;
   course_level: CourseLevel;
+  learner_profile: LearnerProfile | null;
   sessions_completed: number;
   // cognitive_state fields
   stress_level: 0 | 1 | 2;

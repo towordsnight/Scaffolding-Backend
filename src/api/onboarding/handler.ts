@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
-import type { CourseLevel, Topic } from '../../types/schema';
+import type { CourseLevel, LearnerProfile, Topic } from '../../types/schema';
 
 // Which 3 topics to use for cold-start diagnostics per course level
 const DIAGNOSTIC_TOPICS: Record<CourseLevel, Topic[]> = {
@@ -22,10 +22,11 @@ const DIAGNOSTIC_DIFFICULTY: Record<CourseLevel, string> = {
 // Constraint #2: consent_given_at must be set before this proceeds.
 export async function declaration(req: Request, res: Response): Promise<void> {
   const studentId = (req as AuthRequest).studentId;
-  const { adhd_flag, stress_baseline, course_level } = req.body as {
+  const { adhd_flag, stress_baseline, course_level, learner_profile } = req.body as {
     adhd_flag?: boolean;
     stress_baseline?: number;
     course_level?: CourseLevel;
+    learner_profile?: LearnerProfile;
   };
 
   if (adhd_flag === undefined || stress_baseline === undefined || !course_level) {
@@ -41,6 +42,12 @@ export async function declaration(req: Request, res: Response): Promise<void> {
   const validLevels: CourseLevel[] = ['intro', 'intermediate', 'advanced'];
   if (!validLevels.includes(course_level)) {
     res.status(400).json({ error: 'course_level must be intro, intermediate, or advanced' });
+    return;
+  }
+
+  const validProfiles: LearnerProfile[] = ['starter', 'exploring', 'distracted', 'independent'];
+  if (learner_profile !== undefined && !validProfiles.includes(learner_profile)) {
+    res.status(400).json({ error: 'learner_profile must be starter, exploring, distracted, or independent' });
     return;
   }
 
@@ -67,8 +74,10 @@ export async function declaration(req: Request, res: Response): Promise<void> {
     await client.query('BEGIN');
 
     await client.query(
-      `UPDATE students SET adhd_flag=$1, course_level=$2, updated_at=now() WHERE id=$3`,
-      [Boolean(adhd_flag), course_level, studentId],
+      `UPDATE students
+          SET adhd_flag=$1, course_level=$2, learner_profile=COALESCE($3, learner_profile), updated_at=now()
+        WHERE id=$4`,
+      [Boolean(adhd_flag), course_level, learner_profile ?? null, studentId],
     );
 
     await client.query(
