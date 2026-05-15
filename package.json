@@ -7,14 +7,20 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "migrate": "tsx src/db/migrate.ts",
-    "import-problems": "tsx scripts/import-problems.ts",
-    "seed-cohort-priors": "tsx scripts/seed-cohort-priors.ts",
+    "migrate": "node --import tsx src/db/migrate.ts",
+    "import-problems": "node --import tsx scripts/import-problems.ts",
+    "import-thevenin": "node --import tsx scripts/import-thevenin-problem.ts",
+    "seed-cohort-priors": "node --import tsx scripts/seed-cohort-priors.ts",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "test:file": "jest --testPathPattern"
+    "test:file": "jest --testPathPattern",
+    "test:adaptive": "node --import tsx scripts/test-adaptive-system.ts",
+    "test:smoke": "node --import tsx scripts/test-smoke-system.ts",
+    "test:prepush": "node --import tsx scripts/test-prepush-balanced.ts",
+    "test:prepush:prepare": "node --import tsx scripts/test-prepush-balanced.ts --prepare"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -44,7 +50,11 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testMatch": ["**/*.test.ts"],
-    "setupFiles": ["dotenv/config"]
+    "testMatch": [
+      "**/*.test.ts"
+    ],
+    "setupFiles": [
+      "dotenv/config"
+    ]
   }
 }
