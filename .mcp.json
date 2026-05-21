@@ -1,8 +1,7 @@
 {
   "mcpServers": {
     "figma": {
-      "command": "npx",
-      "args": ["-y", "figma-developer-mcp", "--stdio"]
+      "command": "./scripts/figma-mcp.sh"
     },
     "supabase": {
       "type": "http",
