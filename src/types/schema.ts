@@ -56,8 +56,17 @@ export interface AdaptiveConfig {
 // PROBLEM BANK
 // ============================================================================
 
+export interface ProblemSet {
+  id: string;
+  name: string;
+  course_level: CourseLevel;
+  topic: Topic | null;
+  created_at: Date;
+}
+
 export interface Problem {
   id: string;
+  problem_set_id: string | null;
   topic: Topic;
   difficulty: Difficulty;
   problem_text: string;
@@ -137,6 +146,7 @@ export interface Session {
   id: string;
   student_id: string;
   current_problem_id: string | null;
+  current_step_id: string | null;
   current_problem_state: ProblemState;
   hint_history: HintHistoryEntry[];
   started_at: Date;
@@ -254,6 +264,7 @@ export interface StudentProfile {
 
 export interface RedisSession {
   current_problem_id: string | null;
+  current_step_id: string | null;
   current_problem_state: ProblemState;
   hint_history: HintHistoryEntry[];
   last_input_at: string;       // ISO timestamp

@@ -74,6 +74,7 @@ describe('setSession', () => {
   it('serializes and stores session with TTL', async () => {
     const session = {
       current_problem_id: null,
+      current_step_id: null,
       current_problem_state: { answer_draft: null, steps: [], last_modified: '' },
       hint_history: [],
       last_input_at: '',

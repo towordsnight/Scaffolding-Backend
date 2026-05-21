@@ -22,6 +22,7 @@ export async function createSession(req: Request, res: Response): Promise<void> 
   const now = new Date().toISOString();
   const redisSession: RedisSession = {
     current_problem_id:    problem_id ?? null,
+    current_step_id:       null,
     current_problem_state: { answer_draft: null, steps: [], last_modified: now },
     hint_history:          [],
     last_input_at:         now,

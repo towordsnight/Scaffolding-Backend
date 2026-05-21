@@ -7,6 +7,7 @@
 import { Request, Response } from 'express';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
+import { getSession, setSession } from '../../redis/session-store';
 import type { LearnerProfile, McqOption, StepType } from '../../types/schema';
 
 // Public step shape — never expose ground_truth_answer or option.is_correct.
@@ -67,10 +68,20 @@ export async function getScaffold(req: Request, res: Response): Promise<void> {
       : null,
   }));
 
+  // If the caller provides a session_id, include the active step position.
+  const { session_id } = req.query as { session_id?: string };
+  let currentStepId: string | null = null;
+  if (session_id) {
+    const redisSession = await getSession(session_id);
+    currentStepId = redisSession?.current_step_id ?? null;
+  }
+
   res.status(200).json({
     problem_id: problemId,
     variant_id: variantId,
     learner_profile: profile,
+    total_steps: publicSteps.length,
+    current_step_id: currentStepId,
     steps: publicSteps,
   });
 }
@@ -148,9 +159,35 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
     [session_id, studentId, stepId, String(submitted_value), correct, time_spent_s],
   );
 
+  // Advance current_step_id in Redis when the answer is accepted (correct or ungraded).
+  let nextStepId: string | null = null;
+  if (correct !== false) {
+    const nextRow = await pool.query<{ id: string }>(
+      `SELECT s2.id
+         FROM problem_steps s1
+         JOIN problem_steps s2 ON s2.variant_id = s1.variant_id
+                               AND s2.step_order = s1.step_order + 1
+        WHERE s1.id = $1`,
+      [stepId],
+    );
+    nextStepId = nextRow.rows[0]?.id ?? null;
+
+    const redisSession = await getSession(session_id);
+    if (redisSession) {
+      await setSession(session_id, { ...redisSession, current_step_id: nextStepId ?? stepId });
+    }
+
+    // Persist to Postgres so session restore picks up the right step on cache miss.
+    await pool.query(
+      'UPDATE sessions SET current_step_id = $1 WHERE id = $2',
+      [nextStepId ?? stepId, session_id],
+    );
+  }
+
   res.status(200).json({
     correct,
     ungraded: correct === null,
+    next_step_id: correct !== false ? nextStepId : null,
     misconception_hint: null,                                        // wired in Sprint 3
   });
 }

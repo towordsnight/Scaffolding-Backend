@@ -89,6 +89,7 @@ describe('POST /api/sessions/:id/heartbeat', () => {
       hints_used_this_problem: 0,
       hint_history: [],
       current_problem_id: null,
+      current_step_id: null,
       current_problem_state: { answer_draft: null, steps: [], last_modified: pastTime },
       last_seen_at: pastTime,
     });
@@ -112,6 +113,7 @@ describe('POST /api/sessions/:id/heartbeat', () => {
       hints_used_this_problem: 0,
       hint_history: [],
       current_problem_id: null,
+      current_step_id: null,
       current_problem_state: { answer_draft: null, steps: [], last_modified: recentTime },
       last_seen_at: recentTime,
     });

@@ -219,6 +219,37 @@ NON-NEGOTIABLE CONSTRAINTS
 
 
 ================================================================================
+WORKING STYLE RULES
+================================================================================
+
+These rules govern how Claude communicates and implements changes in every session.
+
+1. Explain before acting.
+   Before making any code change, describe what already exists in that area.
+   Design the full plan and ask ALL necessary questions instead of assuming.
+   Never jump straight to implementation.
+
+2. Research before guessing.
+   If the user says "I don't know" to a question, do not assume — research the
+   answer using the codebase and established best practices, then propose a
+   strategy with clear justification before proceeding.
+
+3. Explain every change in plain English with three parts:
+   - What is it: what does this piece do in one plain sentence.
+   - How it gets its value: where the data or behavior comes from.
+   - Why to trust it: is this an established pattern in the codebase, or a
+     best guess? Say which.
+
+4. One change at a time.
+   Implement a single change, explain it, and confirm it works before moving
+   to the next. Never batch unreviewed changes.
+
+5. No jargon in summaries.
+   Do not use function names, API method names, or technical syntax in
+   plain-English summaries unless the user explicitly asks for technical detail.
+
+
+================================================================================
 PLANNING-FIRST RULE
 ================================================================================
 

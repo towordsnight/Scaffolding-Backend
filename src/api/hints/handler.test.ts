@@ -54,6 +54,7 @@ async function* fakeHintGen(tokens: string[], ctx: { hintId: string; hintLevel: 
 
 const baseSession = {
   current_problem_id: 'p1',
+  current_step_id: null,
   current_problem_state: { answer_draft: null, steps: [], last_modified: new Date().toISOString() },
   hint_history: [],
   last_input_at: new Date().toISOString(),

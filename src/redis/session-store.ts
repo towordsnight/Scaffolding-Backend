@@ -16,7 +16,7 @@ export async function getSession(sessionId: string): Promise<RedisSession | null
 
   // Cache miss — reload from Postgres
   const result = await pool.query(
-    `SELECT current_problem_id, current_problem_state, hint_history, last_seen_at
+    `SELECT current_problem_id, current_step_id, current_problem_state, hint_history, last_seen_at
      FROM sessions WHERE id = $1`,
     [sessionId],
   );
@@ -28,6 +28,7 @@ export async function getSession(sessionId: string): Promise<RedisSession | null
 
   const session: RedisSession = {
     current_problem_id: row.current_problem_id ?? null,
+    current_step_id: row.current_step_id ?? null,
     current_problem_state: row.current_problem_state ?? { answer_draft: null, steps: [], last_modified: now },
     hint_history: row.hint_history ?? [],
     last_input_at: now,

@@ -65,8 +65,17 @@ CREATE TABLE adaptive_config (
 -- PROBLEM BANK  (static in MVP)
 -- ============================================================================
 
+CREATE TABLE problem_sets (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT NOT NULL,
+    course_level course_level NOT NULL,
+    topic        topic,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE problems (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    problem_set_id      UUID REFERENCES problem_sets(id) ON DELETE SET NULL,
     topic               topic NOT NULL,
     difficulty          difficulty NOT NULL,
     problem_text        TEXT NOT NULL,
@@ -250,6 +259,7 @@ CREATE INDEX idx_problem_attempts_session   ON problem_attempts(session_id);
 CREATE INDEX idx_hint_events_student        ON hint_events(student_id);
 CREATE INDEX idx_hint_events_session        ON hint_events(session_id);
 CREATE INDEX idx_problems_topic_difficulty  ON problems(topic, difficulty);
+CREATE INDEX idx_problems_problem_set       ON problems(problem_set_id);
 CREATE INDEX idx_problem_variants_profile   ON problem_variants(problem_id, learner_profile);
 CREATE INDEX idx_problem_steps_variant      ON problem_steps(variant_id, step_order);
 CREATE INDEX idx_problem_step_attempts_student ON problem_step_attempts(student_id);
