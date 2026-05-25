@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 
 import { AppShell } from './components/AppShell';
-import { HomeRoute } from './routes/HomeRoute';
+import { DashboardRoute } from './routes/DashboardRoute';
 import { LoginRoute } from './routes/LoginRoute';
 import { RegisterRoute } from './routes/RegisterRoute';
 import { ConsentRoute } from './routes/ConsentRoute';
@@ -13,11 +13,12 @@ import { ProblemRoute } from './routes/ProblemRoute';
 const shell = (element: ReactNode) => <AppShell>{element}</AppShell>;
 
 export const router = createBrowserRouter([
-  { path: '/',                        element: shell(<HomeRoute />) },
+  { path: '/',                        element: <LoginRoute /> },
   { path: '/login',                   element: <LoginRoute /> },
+  { path: '/dashboard',               element: <DashboardRoute /> },
   { path: '/register',                element: shell(<RegisterRoute />) },
   { path: '/onboarding/consent',      element: shell(<ConsentRoute />) },
   { path: '/onboarding/self-declare', element: <SelfDeclareRoute /> },
   { path: '/onboarding/diagnostic',   element: shell(<DiagnosticRoute />) },
-  { path: '/problems/:id',            element: shell(<ProblemRoute />) },
+  { path: '/problems/:id',            element: <ProblemRoute /> },
 ]);

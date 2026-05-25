@@ -30,7 +30,7 @@ const SECTIONS: Section[] = [
     title: 'Health and Wellness',
     questions: [
       { id: 's2q1', text: 'I exercised or engaged in physical activity', reverse: true },
-      { id: 's2q2', text: 'I got adequate sleep (7-9 hours)', reverse: true },
+      { id: 's2q2', text: 'I got adequate sleep (7-8 hours)', reverse: true },
       { id: 's2q3', text: 'I ate balanced and nutritious meals', reverse: true },
       { id: 's2q4', text: 'I practiced stress management techniques', reverse: true },
       { id: 's2q5', text: 'I felt energized and well-rested', reverse: true },
@@ -104,37 +104,39 @@ export function SelfDeclareRoute() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] py-12 font-['IBM_Plex_Sans',sans-serif]">
-      <div className="mx-auto w-full max-w-3xl px-6">
-        {step === 0 ? (
-          <BasicsStep
-            courseLevel={courseLevel}
-            adhdFlag={adhdFlag}
-            onCourseLevel={setCourseLevel}
-            onAdhd={setAdhdFlag}
-            onNext={() => setStep(1)}
-          />
-        ) : (
-          <SurveyStep
-            section={SECTIONS[step - 1]}
-            sectionIndex={step - 1}
-            answers={answers}
-            totalAnswered={totalAnswered}
-            onAnswer={setAnswer}
-            onPrev={() => setStep((step - 1) as 0 | 1 | 2)}
-            onNext={() => setStep((step + 1) as 2 | 3)}
-            onSubmit={handleSubmit}
-            submitting={submitting}
-            error={error}
-            isLast={step === 3}
-          />
-        )}
+    <>
+      {step === 0 ? (
+        <div className="min-h-screen bg-[#F8F9FA] py-12 font-['IBM_Plex_Sans',sans-serif]">
+          <div className="mx-auto w-full max-w-3xl px-6">
+            <BasicsStep
+              courseLevel={courseLevel}
+              adhdFlag={adhdFlag}
+              onCourseLevel={setCourseLevel}
+              onAdhd={setAdhdFlag}
+              onNext={() => setStep(1)}
+            />
 
-        <p className="mt-6 text-center text-xs text-[#99A1AF]">
-          © 2026 Survey Platform. All responses are confidential.
-        </p>
-      </div>
-    </div>
+            <p className="mt-6 text-center text-xs text-[#99A1AF]">
+              © 2026 Survey Platform. All responses are confidential.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <SurveyStep
+          section={SECTIONS[step - 1]}
+          sectionIndex={step - 1}
+          answers={answers}
+          totalAnswered={totalAnswered}
+          onAnswer={setAnswer}
+          onPrev={() => setStep((step - 1) as 0 | 1 | 2)}
+          onNext={() => setStep((step + 1) as 2 | 3)}
+          onSubmit={handleSubmit}
+          submitting={submitting}
+          error={error}
+          isLast={step === 3}
+        />
+      )}
+    </>
   );
 }
 
@@ -231,108 +233,138 @@ function SurveyStep({
   const sectionComplete = sectionAnswered === section.questions.length;
 
   return (
-    <div className="rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-      <header className="border-b border-[#E5E7EB] px-10 py-6">
-        <h1 className="text-2xl font-bold text-black">Frequency Assessment Survey</h1>
-        <p className="mt-1 text-sm text-[#5D5D5D]">
-          Help us understand your experiences over the past 6 months
-        </p>
+    <div className="flex min-h-screen flex-col bg-linear-to-br from-[#EFF6FF] to-[#E0E7FF] font-['IBM_Plex_Sans',sans-serif] text-[#101828]">
+      <header className="border-b border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10)]">
+        <div className="mx-auto w-full max-w-[1043px] px-6 py-6">
+          <h1 className="text-[30px] leading-9 font-medium tracking-[0.01em]">
+            Frequency Assessment Survey
+          </h1>
+          <p className="mt-2 text-base leading-6 tracking-[-0.02em] text-[#4A5565]">
+            Help us understand your experiences over the past 6 months
+          </p>
+        </div>
       </header>
 
-      <div className="bg-[#F5F4FF] px-10 py-5">
-        <p className="text-sm font-semibold text-black">Section {sectionIndex + 1} of {SECTIONS.length}</p>
-        <p className="mt-1 text-xs text-[#5D5D5D]">
-          Overall Progress: {totalAnswered} of {TOTAL_QUESTIONS} questions answered
-        </p>
-        <div className="mt-3 flex gap-2">
-          {SECTIONS.map((_, i) => {
-            const answeredInSection = SECTIONS[i].questions.filter((q) => answers[q.id]).length;
-            const ratio = answeredInSection / SECTIONS[i].questions.length;
-            return (
-              <div key={i} className="h-2 flex-1 overflow-hidden rounded-full bg-[#E5E7EB]">
-                <div
-                  className="h-full bg-[#615FFF] transition-all"
-                  style={{ width: `${ratio * 100}%` }}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="px-10 py-6">
-        <h2 className="text-lg font-bold text-black">{section.title}</h2>
-        <p className="mt-1 text-sm text-[#5D5D5D]">
-          Please read each statement carefully and select the frequency that best describes your experience.
-        </p>
-        <p className="mt-4 text-sm font-medium text-black">During the past 6 months,</p>
-
-        <table className="mt-4 w-full text-sm">
-          <thead>
-            <tr className="text-xs text-[#5D5D5D]">
-              <th className="w-1/2"></th>
-              {LIKERT_OPTIONS.map((opt) => (
-                <th key={opt.value} className="px-2 py-2 text-center font-normal">{opt.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {section.questions.map((q) => (
-              <tr key={q.id} className="border-t border-[#E5E7EB]">
-                <td className="py-4 pr-4 text-black">{q.text}</td>
-                {LIKERT_OPTIONS.map((opt) => (
-                  <td key={opt.value} className="px-2 py-4 text-center">
-                    <input
-                      type="radio"
-                      name={q.id}
-                      value={opt.value}
-                      checked={answers[q.id] === opt.value}
-                      onChange={() => onAnswer(q.id, opt.value)}
-                      className="h-4 w-4 accent-[#615FFF]"
-                      aria-label={`${q.text} — ${opt.label}`}
-                    />
-                  </td>
-                ))}
-              </tr>
+      <main className="mx-auto flex w-full max-w-[1043px] flex-1 flex-col gap-8 px-6 py-12">
+        <section className="rounded-[10px] bg-white p-8 shadow-[0_10px_15px_rgba(0,0,0,0.10),0_4px_6px_rgba(0,0,0,0.10)]">
+          <h2 className="text-xl leading-7 font-medium tracking-[-0.02em] text-[#1E2939]">
+            Section {sectionIndex + 1} of {SECTIONS.length}
+          </h2>
+          <p className="mt-1 text-sm leading-5 tracking-[-0.01em] text-[#6A7282]">
+            Overall Progress: {totalAnswered} of {TOTAL_QUESTIONS} questions answered
+          </p>
+          <div className="mt-6 grid grid-cols-3 gap-2">
+            {SECTIONS.map((s, i) => (
+              <div
+                key={s.title}
+                className={[
+                  'h-2 rounded-full',
+                  i < sectionIndex && 'bg-[#00C950]',
+                  i === sectionIndex && 'bg-[#4F39F6]',
+                  i > sectionIndex && 'bg-[#E5E7EB]',
+                ].filter(Boolean).join(' ')}
+              />
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </section>
 
-      {error && (
-        <p role="alert" className="px-10 pb-2 text-sm text-red-600">{error}</p>
-      )}
+        <section className="rounded-[10px] bg-white p-8 shadow-[0_10px_15px_rgba(0,0,0,0.10),0_4px_6px_rgba(0,0,0,0.10)]">
+          <h2 className="text-2xl leading-8 font-medium tracking-[0.003em]">
+            {section.title}
+          </h2>
+          <p className="mt-2 text-base leading-6 tracking-[-0.02em] text-[#4A5565]">
+            Please read each statement carefully and select the frequency that best describes your experience.
+          </p>
+          <p className="mt-8 text-lg leading-7 tracking-[-0.02em] text-[#364153]">
+            During the past 6 months,
+          </p>
 
-      <footer className="flex items-center justify-between border-t border-[#E5E7EB] bg-[#FAFAFB] px-10 py-4">
-        <button
-          type="button"
-          onClick={onPrev}
-          className="rounded-md px-4 py-2 text-sm font-medium text-[#5D5D5D] hover:bg-[#E5E7EB]"
-        >
-          Previous
-        </button>
-        <p className="text-xs text-[#5D5D5D]">
-          {sectionAnswered} of {section.questions.length} questions answered in this section
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full min-w-[715px] border-collapse border border-[#D1D5DC] text-base text-[#364153]">
+              <thead>
+                <tr>
+                  <th className="w-[200px] border border-[#D1D5DC] px-4 py-4 text-left font-normal" />
+                  {LIKERT_OPTIONS.map((opt) => (
+                    <th
+                      key={opt.value}
+                      className="border border-[#D1D5DC] px-4 py-4 text-center font-normal"
+                    >
+                      {opt.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {section.questions.map((q) => (
+                  <tr key={q.id}>
+                    <td className="w-[200px] border border-[#D1D5DC] px-4 py-4 leading-6 tracking-[-0.02em]">
+                      {q.text}
+                    </td>
+                    {LIKERT_OPTIONS.map((opt) => (
+                      <td key={opt.value} className="border border-[#D1D5DC] px-4 py-4 text-center">
+                        <input
+                          type="radio"
+                          name={q.id}
+                          value={opt.value}
+                          checked={answers[q.id] === opt.value}
+                          onChange={() => onAnswer(q.id, opt.value)}
+                          className="size-6 cursor-pointer accent-[#364153]"
+                          aria-label={`${q.text} - ${opt.label}`}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="rounded-[10px] bg-white p-8 shadow-[0_10px_15px_rgba(0,0,0,0.10),0_4px_6px_rgba(0,0,0,0.10)]">
+          {error && (
+            <p role="alert" className="mb-4 text-sm text-red-600">
+              {error}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={onPrev}
+              disabled={sectionIndex === 0}
+              className="h-[50px] rounded-lg border border-[#D1D5DC] px-6 text-base font-medium text-[#364153] transition hover:bg-[#F8F9FA] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <p className="text-center text-sm leading-5 tracking-[-0.01em] text-[#6A7282]">
+              {sectionAnswered} of {section.questions.length} questions answered in this section
+            </p>
+            {isLast ? (
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={!sectionComplete || submitting}
+                className="h-12 rounded-lg bg-[#00A63E] px-6 text-base font-medium text-white transition hover:bg-[#008236] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? 'Submitting...' : 'Submit Survey'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onNext}
+                disabled={!sectionComplete}
+                className="h-12 rounded-lg bg-[#4F39F6] px-6 text-base font-medium text-white transition hover:bg-[#432DD7] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Next Section
+              </button>
+            )}
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-[#E5E7EB] bg-white py-6">
+        <p className="text-center text-sm leading-5 tracking-[-0.01em] text-[#6A7282]">
+          © 2026 Survey Platform. All responses are confidential.
         </p>
-        {isLast ? (
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!sectionComplete || submitting}
-            className="rounded-[10px] bg-[#00C16A] px-6 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#00a85a] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? 'Submitting…' : 'Submit Survey'}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={!sectionComplete}
-            className="rounded-[10px] bg-[#615FFF] px-6 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#5350e6] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Next Section
-          </button>
-        )}
       </footer>
     </div>
   );

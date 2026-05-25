@@ -40,6 +40,7 @@ export type CourseLevel = 'intro' | 'intermediate' | 'advanced';
 export type LearnerProfile = 'starter' | 'exploring' | 'distracted' | 'independent';
 export type Topic = 'kvl' | 'kcl' | 'phasors' | 'impedance' | 'thevenin';
 export type Difficulty = 'easy' | 'medium' | 'hard';
+export type StepType = 'mcq' | 'numeric' | 'planning' | 'open';
 
 export interface PublicProblem {
   id: string;
@@ -48,6 +49,51 @@ export interface PublicProblem {
   problem_text: string;
   error_taxonomy: string[];
   created_at: string;
+}
+
+export interface HomeworkProblem {
+  id: string;
+  topic: Topic;
+  difficulty: Difficulty;
+  problem_text: string;
+  attempted: boolean;
+}
+
+export interface HomeworkSet {
+  id: string;
+  name: string;
+  course_level: CourseLevel;
+  topic: Topic | null;
+  problems: HomeworkProblem[];
+}
+
+export interface ScaffoldStepOption {
+  key: string;
+  text: string;
+}
+
+export interface ScaffoldStep {
+  id: string;
+  step_order: number;
+  step_type: StepType;
+  prompt_text: string;
+  options: ScaffoldStepOption[] | null;
+}
+
+export interface ProblemScaffold {
+  problem_id: string;
+  variant_id: string;
+  learner_profile: LearnerProfile;
+  total_steps: number;
+  current_step_id: string | null;
+  steps: ScaffoldStep[];
+}
+
+export interface StepSubmitResult {
+  correct: boolean | null;
+  ungraded: boolean;
+  next_step_id: string | null;
+  misconception_hint: string | null;
 }
 
 export const auth = {
@@ -115,6 +161,24 @@ export const problems = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  getScaffold: (id: string, sessionId?: string) => {
+    const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+    return request<ProblemScaffold>(`/api/problems/${id}/scaffold${query}`);
+  },
+
+  submitStep: (
+    id: string,
+    stepId: string,
+    input: { session_id: string; submitted_value: string | number; time_spent_s: number },
+  ) => request<StepSubmitResult>(`/api/problems/${id}/steps/${stepId}/submit`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }),
+};
+
+export const homeworkSets = {
+  list: () => request<HomeworkSet[]>('/api/homework-sets'),
 };
 
 export const sessions = {

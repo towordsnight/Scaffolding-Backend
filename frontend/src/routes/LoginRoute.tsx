@@ -16,7 +16,7 @@ export function LoginRoute() {
     try {
       const email = netid.includes('@') ? netid : `${netid.trim()}@uw.edu`;
       await auth.login({ email, password });
-      navigate('/onboarding/consent');
+      navigate('/dashboard');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong');
     } finally {
