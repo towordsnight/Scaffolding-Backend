@@ -16,7 +16,7 @@ export const router = createBrowserRouter([
   { path: '/',                        element: <LoginRoute /> },
   { path: '/login',                   element: <LoginRoute /> },
   { path: '/dashboard',               element: <DashboardRoute /> },
-  { path: '/register',                element: shell(<RegisterRoute />) },
+  { path: '/register',                element: <RegisterRoute /> },
   { path: '/onboarding/consent',      element: shell(<ConsentRoute />) },
   { path: '/onboarding/self-declare', element: <SelfDeclareRoute /> },
   { path: '/onboarding/diagnostic',   element: shell(<DiagnosticRoute />) },

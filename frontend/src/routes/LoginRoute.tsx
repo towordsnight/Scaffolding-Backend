@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ApiError, auth } from '../lib/api';
 
 export function LoginRoute() {
@@ -74,7 +74,7 @@ export function LoginRoute() {
             </button>
           </form>
 
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-3">
             <button
               type="button"
               onClick={() => alert('Password reset is not available yet.')}
@@ -82,6 +82,12 @@ export function LoginRoute() {
             >
               Forgot your password?
             </button>
+            <p className="text-sm text-[#5D5D5D]">
+              Don't have an account?{' '}
+              <Link to="/register" className="font-medium text-[#615FFF] hover:underline">
+                Create one
+              </Link>
+            </p>
           </div>
         </div>
       </div>

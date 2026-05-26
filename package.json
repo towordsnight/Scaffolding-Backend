@@ -8,12 +8,14 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "build": "tsc",
     "build:frontend": "npm --prefix frontend run build",
+    "build:all": "npm run build:frontend && npm run build",
     "start": "node dist/index.js",
     "migrate": "node --import tsx src/db/migrate.ts",
     "import-problems": "node --import tsx scripts/import-problems.ts",
     "import-thevenin": "node --import tsx scripts/import-thevenin-problem.ts",
     "seed-cohort-priors": "node --import tsx scripts/seed-cohort-priors.ts",
     "test": "jest --runInBand",
+    "test:integration": "jest --config jest.integration.config.js --runInBand --forceExit",
     "test:watch": "jest --watch",
     "test:file": "jest --testPathPattern",
     "test:adaptive": "node --import tsx scripts/test-adaptive-system.ts",
@@ -54,6 +56,10 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/*.test.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "\\.integration\\.test\\.ts$"
     ],
     "setupFiles": [
       "dotenv/config"

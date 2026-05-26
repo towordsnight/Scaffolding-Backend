@@ -101,6 +101,7 @@ CREATE TABLE sessions (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id              UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     current_problem_id      UUID REFERENCES problems(id) ON DELETE SET NULL,
+    current_step_id         UUID,  -- FK added after problem_steps is defined (see ALTER TABLE below)
     current_problem_state   JSONB NOT NULL DEFAULT '{}',
     hint_history            JSONB NOT NULL DEFAULT '[]',
     started_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -211,6 +212,11 @@ CREATE TABLE problem_steps (
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (variant_id, step_order)
 );
+
+-- Add the forward-reference FK from sessions now that problem_steps exists.
+ALTER TABLE sessions
+    ADD CONSTRAINT sessions_step_id_fkey
+    FOREIGN KEY (current_step_id) REFERENCES problem_steps(id) ON DELETE SET NULL;
 
 CREATE TABLE problem_step_attempts (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

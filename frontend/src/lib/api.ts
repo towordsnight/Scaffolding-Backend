@@ -1,10 +1,8 @@
-const fallbackBaseUrl = 'http://localhost:3000';
-
 export const apiClient = {
-  baseUrl: import.meta.env.VITE_API_BASE_URL?.trim() || fallbackBaseUrl,
+  baseUrl: import.meta.env.VITE_API_BASE_URL?.trim() || '',
   credentials: 'include' as const,
   buildUrl(path: string) {
-    return new URL(path, this.baseUrl).toString();
+    return this.baseUrl ? new URL(path, this.baseUrl).toString() : path;
   },
   async fetch(path: string, init?: RequestInit) {
     return fetch(this.buildUrl(path), {

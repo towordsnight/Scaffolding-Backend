@@ -67,11 +67,9 @@ export async function postHint(req: Request, res: Response): Promise<void> {
       const next = await gen.next();
       if (next.done) {
         const ctx = next.value;
-        if (!aborted) {
-          res.write(`event: done\ndata: ${JSON.stringify({ hint_id: ctx.hintId, hint_level: ctx.hintLevel, hint_depth: ctx.hintDepth, response_budget: ctx.responseBudget })}\n\n`);
-          res.end();
-        }
 
+        // Persist state before closing the connection so the next request
+        // always sees the updated hint count (avoids a race with concurrent requests).
         await pool.query(
           `INSERT INTO hint_events
              (session_id, problem_id, student_id, hint_level, hint_depth, absorbed)
@@ -88,6 +86,11 @@ export async function postHint(req: Request, res: Response): Promise<void> {
           ],
           hints_used_this_problem: hintsUsed + 1,
         });
+
+        if (!aborted) {
+          res.write(`event: done\ndata: ${JSON.stringify({ hint_id: ctx.hintId, hint_level: ctx.hintLevel, hint_depth: ctx.hintDepth, response_budget: ctx.responseBudget })}\n\n`);
+          res.end();
+        }
         return;
       }
 
