@@ -4,3 +4,5 @@ dist/
 *.js.map
 .DS_Store
 **/.DS_Store
+tsconfig.tsbuildinfo
+logs/
