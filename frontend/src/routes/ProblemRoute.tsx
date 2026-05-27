@@ -31,19 +31,20 @@ export function ProblemRoute() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) {
-      setError('Problem id is missing.');
-      setLoading(false);
-      return;
-    }
-
-    const problemId = id;
     let active = true;
 
     async function loadProblem() {
       setLoading(true);
       setError(null);
       try {
+        const problemId = id ?? (await problems.next()).id;
+        if (!active) return;
+
+        if (!id) {
+          navigate(`/problems/${problemId}`, { replace: true });
+          return;
+        }
+
         const [problemResult, sessionResult] = await Promise.all([
           problems.get(problemId),
           sessions.create({ problem_id: problemId }),
@@ -73,7 +74,7 @@ export function ProblemRoute() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, navigate]);
 
   const steps = scaffold?.steps ?? [];
   const activeStep = steps[activeIndex] ?? null;
@@ -120,14 +121,6 @@ export function ProblemRoute() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  if (!id) {
-    return (
-      <ProblemShell>
-        <EmptyState title="Problem not found" message="The problem URL is missing an id." />
-      </ProblemShell>
-    );
   }
 
   return (

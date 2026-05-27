@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, auth, homeworkSets, type HomeworkSet } from '../lib/api';
+import { ApiError, auth, homeworkSets, problems, type HomeworkSet } from '../lib/api';
 
 interface CourseCardView {
   id: string;
@@ -84,6 +84,7 @@ export function DashboardRoute() {
   const [error, setError] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [openingCourseId, setOpeningCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -95,6 +96,7 @@ export function DashboardRoute() {
         setSets(result);
       } catch (err) {
         if (!active) return;
+        if (err instanceof ApiError && err.status === 401) return;
         setError(err instanceof ApiError ? err.message : 'Unable to load dashboard courses');
       } finally {
         if (active) setLoading(false);
@@ -125,6 +127,29 @@ export function DashboardRoute() {
     }
   }
 
+  async function openCourse(course: CourseCardView) {
+    setOpeningCourseId(course.id);
+    setError(null);
+    try {
+      if (course.problemId) {
+        navigate(`/problems/${course.problemId}`);
+        return;
+      }
+
+      if (course.id.startsWith('sample-')) {
+        navigate('/problemset');
+        return;
+      }
+
+      const nextProblem = await problems.next();
+      navigate(`/problems/${nextProblem.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to open an assignment for this course');
+    } finally {
+      setOpeningCourseId(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] font-['IBM_Plex_Sans',sans-serif] text-black">
       <header className="border-b border-[#E1E1E1] bg-white">
@@ -151,9 +176,8 @@ export function DashboardRoute() {
             <CourseCard
               key={course.id}
               course={course}
-              onOpen={() => {
-                if (course.problemId) navigate(`/problems/${course.problemId}`);
-              }}
+              opening={openingCourseId === course.id}
+              onOpen={() => openCourse(course)}
             />
           ))}
         </div>
@@ -196,9 +220,29 @@ export function DashboardRoute() {
   );
 }
 
-function CourseCard({ course, onOpen }: { course: CourseCardView; onOpen: () => void }) {
+function CourseCard({
+  course,
+  opening,
+  onOpen,
+}: {
+  course: CourseCardView;
+  opening: boolean;
+  onOpen: () => void;
+}) {
   return (
-    <article className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10),0_1px_2px_rgba(0,0,0,0.10)]">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="cursor-pointer overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10),0_1px_2px_rgba(0,0,0,0.10)] transition hover:-translate-y-0.5 hover:shadow-[0_10px_20px_rgba(0,0,0,0.10)] focus:outline-none focus:ring-2 focus:ring-[#615FFF]/30"
+      aria-label={`Open ${course.title}`}
+    >
       <div className="flex h-40 items-center justify-center bg-[linear-gradient(157deg,#615FFF_0%,#4A47CC_100%)]">
         <p className="text-5xl leading-[72px] font-bold text-white/20">{course.initials}</p>
       </div>
@@ -210,18 +254,25 @@ function CourseCard({ course, onOpen }: { course: CourseCardView; onOpen: () => 
             {course.description}
           </p>
           <p className="mt-1 text-xs leading-[18px] font-medium tracking-[0.05em] text-[#99A1AF] uppercase">
-            {course.term}
+            {opening ? 'Opening assignment...' : course.term}
           </p>
         </div>
 
         <div className="flex gap-3 border-t border-[#F3F4F6] pt-[9px]">
-          <IconButton label="Course calendar">
+          <IconButton label="Course calendar" onClick={(e) => e.stopPropagation()}>
             <CalendarIcon />
           </IconButton>
-          <IconButton label="Expand course details">
+          <IconButton label="Expand course details" onClick={(e) => e.stopPropagation()}>
             <ChevronDownIcon />
           </IconButton>
-          <IconButton label="Open course work" onClick={onOpen} disabled={!course.problemId}>
+          <IconButton
+            label="Open course work"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
+            }}
+            disabled={opening}
+          >
             <DocumentIcon />
           </IconButton>
         </div>
@@ -239,7 +290,7 @@ function IconButton({
   children: ReactNode;
   label: string;
   disabled?: boolean;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button

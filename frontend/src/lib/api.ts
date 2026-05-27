@@ -1,4 +1,6 @@
-const fallbackBaseUrl = 'http://localhost:3000';
+const fallbackBaseUrl = typeof window === 'undefined'
+  ? 'http://localhost:3000'
+  : `${window.location.protocol}//${window.location.hostname}:3000`;
 
 export const apiClient = {
   baseUrl: import.meta.env.VITE_API_BASE_URL?.trim() || fallbackBaseUrl,
