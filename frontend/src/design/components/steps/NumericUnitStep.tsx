@@ -1,0 +1,34 @@
+import type { NumericUnitStepDef, StepState } from '../../types';
+
+interface NumericUnitStepProps {
+  step: NumericUnitStepDef;
+  state: StepState;
+}
+
+/** Steps 8 and 11: "Vth = [ 0.00 ] V" style inline labeled input. */
+export function NumericUnitStep({ step, state }: NumericUnitStepProps) {
+  const value =
+    state === 'filled' ? step.filled.value
+      : state === 'checked' ? step.checked.value
+        : '';
+  const filled = state !== 'empty';
+
+  return (
+    <div className="mt-3">
+      <p className="text-[14px] font-bold text-black">{step.fieldLabel}</p>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-[14px] font-semibold text-black">{step.leftLabel}</span>
+        <input
+          type="text"
+          readOnly
+          value={value}
+          placeholder={step.placeholder ?? '0.00'}
+          className={`h-10 w-full rounded-md border bg-white px-3 text-[14px] text-black ${
+            filled ? 'border-[#10B981] outline-2 outline-[#10B98133]' : 'border-[#E5E7EB]'
+          }`}
+        />
+        <span className="text-[14px] text-[#1E2939]">{step.unit}</span>
+      </div>
+    </div>
+  );
+}
