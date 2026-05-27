@@ -3,13 +3,16 @@ import type { MultiValueStepDef, StepState } from '../../types';
 interface MultiValueStepProps {
   step: MultiValueStepDef;
   state: StepState;
+  values?: string[];
+  onChange?: (index: number, value: string) => void;
 }
 
-export function MultiValueStep({ step, state }: MultiValueStepProps) {
-  const values =
+export function MultiValueStep({ step, state, values: controlledValues, onChange }: MultiValueStepProps) {
+  const values = controlledValues ?? (
     state === 'filled' ? step.filled.values
       : state === 'checked' ? step.checked.values
-        : step.inputs.map(() => '');
+        : step.inputs.map(() => '')
+  );
 
   const filled = state !== 'empty';
 
@@ -22,8 +25,8 @@ export function MultiValueStep({ step, state }: MultiValueStepProps) {
           </label>
           <input
             type="text"
-            readOnly
             value={values[index] ?? ''}
+            onChange={(event) => onChange?.(index, event.target.value)}
             placeholder={input.placeholder ?? ''}
             className={`mt-1.5 h-10 w-full rounded-md border bg-white px-3 text-[14px] text-black ${
               filled ? 'border-[#10B981] outline-2 outline-[#10B98133]' : 'border-[#E5E7EB]'

@@ -3,14 +3,17 @@ import type { PriorsThenInputStepDef, StepState } from '../../types';
 interface PriorsThenInputStepProps {
   step: PriorsThenInputStepDef;
   state: StepState;
+  value?: string;
+  onChange?: (value: string) => void;
 }
 
 /** Step 12: shows the previously-found values (Vth, Isc) above a final numeric input. */
-export function PriorsThenInputStep({ step, state }: PriorsThenInputStepProps) {
-  const value =
+export function PriorsThenInputStep({ step, state, value: controlledValue, onChange }: PriorsThenInputStepProps) {
+  const value = controlledValue ?? (
     state === 'filled' ? step.filled.value
       : state === 'checked' ? step.checked.value
-        : '';
+        : ''
+  );
   const filled = state !== 'empty';
 
   return (
@@ -27,8 +30,8 @@ export function PriorsThenInputStep({ step, state }: PriorsThenInputStepProps) {
         <span className="text-[14px] font-semibold text-black">{step.leftLabel}</span>
         <input
           type="text"
-          readOnly
           value={value}
+          onChange={(event) => onChange?.(event.target.value)}
           placeholder={step.placeholder ?? '0.00'}
           className={`h-10 w-full rounded-md border bg-white px-3 text-[14px] text-black ${
             filled ? 'border-[#10B981] outline-2 outline-[#10B98133]' : 'border-[#E5E7EB]'

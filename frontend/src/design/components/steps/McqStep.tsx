@@ -3,13 +3,16 @@ import type { McqStepDef, StepState } from '../../types';
 interface McqStepProps {
   step: McqStepDef;
   state: StepState;
+  selectedOptionIndex?: number;
+  onSelect?: (index: number) => void;
 }
 
-export function McqStep({ step, state }: McqStepProps) {
-  const selectedIndex =
+export function McqStep({ step, state, selectedOptionIndex, onSelect }: McqStepProps) {
+  const fixtureSelectedIndex =
     state === 'filled' ? step.filled.selectedIndex
       : state === 'checked' ? step.checked.selectedIndex
         : undefined;
+  const selectedIndex = selectedOptionIndex ?? fixtureSelectedIndex;
 
   return (
     <div className="mt-4 grid grid-cols-2 gap-3">
@@ -17,7 +20,9 @@ export function McqStep({ step, state }: McqStepProps) {
         <CircuitOptionTile
           key={option.key}
           kind={option.kind}
+          label={option.key}
           selected={selectedIndex === index}
+          onClick={() => onSelect?.(index)}
         />
       ))}
     </div>
@@ -26,18 +31,26 @@ export function McqStep({ step, state }: McqStepProps) {
 
 function CircuitOptionTile({
   kind,
+  label,
   selected,
+  onClick,
 }: {
   kind: 'voltage_series' | 'current_series' | 'current_parallel' | 'voltage_parallel';
+  label: string;
   selected: boolean;
+  onClick: () => void;
 }) {
   const isVoltage = kind === 'voltage_series' || kind === 'voltage_parallel';
   const isSeries = kind === 'voltage_series' || kind === 'current_series';
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      aria-label={`Select answer choice ${label}`}
       className={`flex items-center justify-center rounded-lg border-2 bg-white p-2 transition ${
-        selected ? 'border-[#615FFF] shadow-[0_0_0_3px_rgba(97,95,255,0.18)]' : 'border-[#E5E7EB]'
+        selected ? 'border-[#615FFF] shadow-[0_0_0_3px_rgba(97,95,255,0.18)]' : 'border-[#E5E7EB] hover:border-[#99A1AF]'
       }`}
     >
       <svg viewBox="0 0 150 92" aria-hidden="true" className="h-[64px] w-full">
@@ -59,7 +72,7 @@ function CircuitOptionTile({
           </>
         )}
       </svg>
-    </div>
+    </button>
   );
 }
 

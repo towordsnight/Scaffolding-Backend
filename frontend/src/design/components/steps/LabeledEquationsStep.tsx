@@ -3,6 +3,8 @@ import type { LabeledEquationsStepDef, StepState } from '../../types';
 interface LabeledEquationsStepProps {
   step: LabeledEquationsStepDef;
   state: StepState;
+  values?: string[];
+  onChange?: (index: number, value: string) => void;
 }
 
 /**
@@ -13,11 +15,17 @@ interface LabeledEquationsStepProps {
  * checked shows both filled. We honor whatever shape lives in the fixtures
  * for each state.
  */
-export function LabeledEquationsStep({ step, state }: LabeledEquationsStepProps) {
-  const equations =
+export function LabeledEquationsStep({
+  step,
+  state,
+  values: controlledValues,
+  onChange,
+}: LabeledEquationsStepProps) {
+  const equations = controlledValues ?? (
     state === 'filled' ? step.filled.equations
       : state === 'checked' ? step.checked.equations
-        : step.empty.equations;
+        : step.empty.equations
+  );
 
   return (
     <div className="mt-4 space-y-3">
@@ -27,8 +35,8 @@ export function LabeledEquationsStep({ step, state }: LabeledEquationsStepProps)
             {step.prefix} {index + 1}:
           </label>
           <textarea
-            readOnly
             value={value}
+            onChange={(event) => onChange?.(index, event.target.value)}
             rows={value ? 2 : 2}
             className={`mt-1.5 w-full resize-none rounded-md border bg-white px-3 py-2 font-mono text-[13px] text-black ${
               value

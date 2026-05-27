@@ -3,14 +3,17 @@ import type { NumericUnitStepDef, StepState } from '../../types';
 interface NumericUnitStepProps {
   step: NumericUnitStepDef;
   state: StepState;
+  value?: string;
+  onChange?: (value: string) => void;
 }
 
 /** Steps 8 and 11: "Vth = [ 0.00 ] V" style inline labeled input. */
-export function NumericUnitStep({ step, state }: NumericUnitStepProps) {
-  const value =
+export function NumericUnitStep({ step, state, value: controlledValue, onChange }: NumericUnitStepProps) {
+  const value = controlledValue ?? (
     state === 'filled' ? step.filled.value
       : state === 'checked' ? step.checked.value
-        : '';
+        : ''
+  );
   const filled = state !== 'empty';
 
   return (
@@ -20,8 +23,8 @@ export function NumericUnitStep({ step, state }: NumericUnitStepProps) {
         <span className="text-[14px] font-semibold text-black">{step.leftLabel}</span>
         <input
           type="text"
-          readOnly
           value={value}
+          onChange={(event) => onChange?.(event.target.value)}
           placeholder={step.placeholder ?? '0.00'}
           className={`h-10 w-full rounded-md border bg-white px-3 text-[14px] text-black ${
             filled ? 'border-[#10B981] outline-2 outline-[#10B98133]' : 'border-[#E5E7EB]'
