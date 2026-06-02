@@ -10,6 +10,8 @@ import { AuthRequest } from '../auth/middleware';
 import { getSession, setSession } from '../../redis/session-store';
 import type { LearnerProfile, McqOption, StepType } from '../../types/schema';
 
+const STEP_ATTEMPT_BUDGET = 5;
+
 // Public step shape — never expose ground_truth_answer or option.is_correct.
 interface PublicStep {
   id: string;
@@ -69,7 +71,7 @@ export async function getScaffold(req: Request, res: Response): Promise<void> {
   }));
 
   // If the caller provides a session_id, include the active step position.
-  const { session_id } = req.query as { session_id?: string };
+  const { session_id } = (req.query ?? {}) as { session_id?: string };
   let currentStepId: string | null = null;
   if (session_id) {
     const redisSession = await getSession(session_id);
@@ -159,6 +161,25 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
     [session_id, studentId, stepId, String(submitted_value), correct, time_spent_s],
   );
 
+  let attemptMetadata = {};
+  if (correct === false) {
+    const attemptRow = await pool.query<{ attempts_used: number }>(
+      `SELECT COUNT(*)::int AS attempts_used
+         FROM problem_step_attempts
+        WHERE session_id = $1
+          AND student_id = $2
+          AND step_id = $3
+          AND correct = false`,
+      [session_id, studentId, stepId],
+    );
+    const attemptsUsed = Number(attemptRow.rows[0]?.attempts_used ?? 0);
+    attemptMetadata = {
+      attempt_budget: STEP_ATTEMPT_BUDGET,
+      attempts_used: attemptsUsed,
+      attempts_remaining: Math.max(0, STEP_ATTEMPT_BUDGET - attemptsUsed),
+    };
+  }
+
   // Advance current_step_id in Redis when the answer is accepted (correct or ungraded).
   let nextStepId: string | null = null;
   if (correct !== false) {
@@ -189,5 +210,6 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
     ungraded: correct === null,
     next_step_id: correct !== false ? nextStepId : null,
     misconception_hint: null,                                        // wired in Sprint 3
+    ...attemptMetadata,
   });
 }
