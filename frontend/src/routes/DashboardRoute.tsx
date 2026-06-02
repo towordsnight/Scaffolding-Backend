@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, auth, homeworkSets, problems, type HomeworkSet } from '../lib/api';
+import { ApiError, auth, homeworkSets, problems } from '../lib/api';
 
 interface CourseCardView {
   id: string;
@@ -11,75 +11,18 @@ interface CourseCardView {
   problemId?: string;
 }
 
-const SAMPLE_COURSES: CourseCardView[] = [
+const DASHBOARD_COURSES: CourseCardView[] = [
   {
-    id: 'sample-advising',
-    title: 'ECEE Student Advising Resources',
-    description: 'ECEE Student Advising Resources and Information',
-    term: 'Spring 2025',
-    initials: 'ECEE',
-  },
-  {
-    id: 'sample-ee-242',
-    title: 'E E 242 A',
-    description: 'D.C. to 26 Signals, Systems, and Transforms',
-    term: 'Spring 2025',
-    initials: 'E',
-  },
-  {
-    id: 'sample-ee-271',
-    title: 'E E 271 A',
-    description: 'Digital Circuits And Systems',
-    term: 'Spring 2025',
-    initials: 'E',
-  },
-  {
-    id: 'sample-ee-280',
-    title: 'E E 280 A',
-    description: 'Exploring Design',
-    term: 'Spring 2025',
-    initials: 'E',
-  },
-  {
-    id: 'sample-grad-advising',
-    title: 'ECE Graduate Program Advising',
-    description: 'ECE Graduate Program Advising Resources',
-    term: 'Summer 2025',
-    initials: 'ECE',
-  },
-  {
-    id: 'sample-fin-250',
-    title: 'FIN 250 A',
-    description: 'Personal Finance',
-    term: 'Fall 2024',
-    initials: 'FIN',
-  },
-  {
-    id: 'sample-placeholder',
-    title: 'COURSE ### X',
-    description: 'Course Title Here',
-    term: 'Quarter Year',
-    initials: '?',
+    id: 'sample-ee-xx',
+    title: 'EE XX',
+    description: 'Circuit theory',
+    term: 'Summer 2026',
+    initials: 'EE',
   },
 ];
 
-const TOPIC_LABEL: Record<string, string> = {
-  kvl: 'KVL',
-  kcl: 'KCL',
-  phasors: 'Phasors',
-  impedance: 'Impedance',
-  thevenin: 'Thevenin',
-};
-
-const COURSE_LEVEL_LABEL: Record<string, string> = {
-  intro: 'Intro circuits',
-  intermediate: 'Intermediate circuits',
-  advanced: 'Advanced circuits',
-};
-
 export function DashboardRoute() {
   const navigate = useNavigate();
-  const [sets, setSets] = useState<HomeworkSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -91,9 +34,8 @@ export function DashboardRoute() {
 
     async function loadHomeworkSets() {
       try {
-        const result = await homeworkSets.list();
+        await homeworkSets.list();
         if (!active) return;
-        setSets(result);
       } catch (err) {
         if (!active) return;
         if (err instanceof ApiError && err.status === 401) return;
@@ -109,10 +51,7 @@ export function DashboardRoute() {
     };
   }, []);
 
-  const courses = useMemo(() => {
-    if (sets.length === 0) return SAMPLE_COURSES;
-    return sets.map(toCourseCard);
-  }, [sets]);
+  const courses = DASHBOARD_COURSES;
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -303,31 +242,6 @@ function IconButton({
       {children}
     </button>
   );
-}
-
-function toCourseCard(set: HomeworkSet): CourseCardView {
-  const topic = set.topic ? TOPIC_LABEL[set.topic] ?? set.topic : 'Course';
-  const level = COURSE_LEVEL_LABEL[set.course_level] ?? set.course_level;
-  const firstProblem = set.problems[0];
-  const card: CourseCardView = {
-    id: set.id,
-    title: set.name,
-    description: `${level} ${topic} problem set`,
-    term: 'Spring 2025',
-    initials: getInitials(set.name, topic),
-  };
-  if (firstProblem) card.problemId = firstProblem.id;
-  return card;
-}
-
-function getInitials(title: string, fallback: string) {
-  const words = title.match(/[A-Za-z0-9]+/g) ?? [];
-  const initials = words
-    .slice(0, 4)
-    .map((word) => word[0])
-    .join('')
-    .toUpperCase();
-  return initials || fallback.slice(0, 4).toUpperCase() || '?';
 }
 
 function UserIcon() {

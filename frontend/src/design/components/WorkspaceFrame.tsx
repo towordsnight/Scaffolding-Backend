@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { ResizableSplitPane } from '../../components/ResizableSplitPane';
+
 interface WorkspaceFrameProps {
   title?: string;
   eyebrow?: string;
@@ -14,8 +16,8 @@ interface WorkspaceFrameProps {
  * Top-level shell for the Homework Workspace screen.
  *
  * Layout: 73.5px header bar across the top, then a two-pane body with a
- * fixed-width 430px sidebar on the left and the scratchpad filling the
- * remaining width on the right. Matches frame 22:213 in the Figma file.
+ * resizable sidebar on the left and the scratchpad filling the remaining
+ * width on the right. Matches frame 22:213 in the Figma file.
  */
 export function WorkspaceFrame({
   title = 'Homework Set 1',
@@ -47,12 +49,11 @@ export function WorkspaceFrame({
           </TopButton>
         </div>
       </header>
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[430px] shrink-0 flex-col border-r border-[#E1E1E1] bg-[#F8F9FA]">
-          {sidebar}
-        </aside>
-        <div className="flex min-w-0 flex-1 flex-col">{workspace}</div>
-      </div>
+      <ResizableSplitPane
+        defaultSidebarWidth={430}
+        sidebar={sidebar}
+        workspace={workspace}
+      />
     </div>
   );
 }

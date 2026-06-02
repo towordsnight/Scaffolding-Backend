@@ -8,17 +8,7 @@ import { WorkspaceFrame } from '../design/components/WorkspaceFrame';
 import { mockSteps } from '../design/mockSteps';
 import type { Feedback as FeedbackData, Step, StepState } from '../design/types';
 
-const WRONG_MCQ_FEEDBACK: FeedbackData = {
-  tone: 'error',
-  title: 'Not quite',
-  body: 'That model does not meet the requirements. Try a different equivalent circuit form.',
-};
-
-const WRONG_TEXT_FEEDBACK: FeedbackData = {
-  tone: 'error',
-  title: 'Try again',
-  body: 'That response is not quite right yet. Adjust your work and check again.',
-};
+const ATTEMPT_BUDGET = 5;
 
 type TextInputStep = Extract<
   Step,
@@ -41,7 +31,6 @@ type TextInputStep = Extract<
  *
  * Pressing the action button validates MCQ selections, or advances other steps
  * along `empty -> filled -> checked`. Previous/Next navigate between steps.
- * Mark complete jumps to the next step.
  *
  * No backend integration — this is the visual contract that stage 4 will
  * wire to `problems.getScaffold` and `problems.submitStep`.
@@ -54,6 +43,7 @@ export function DesignProblemRoute() {
   const [mcqFeedbackByStep, setMcqFeedbackByStep] = useState<Record<number, FeedbackData>>({});
   const [textAnswersByStep, setTextAnswersByStep] = useState<Record<number, string[]>>({});
   const [textFeedbackByStep, setTextFeedbackByStep] = useState<Record<number, FeedbackData>>({});
+  const [incorrectAttemptsByStep, setIncorrectAttemptsByStep] = useState<Record<number, number>>({});
 
   const step = mockSteps[activeIndex];
   const state: StepState = statesByStep[step.number] ?? 'empty';
@@ -101,9 +91,10 @@ export function DesignProblemRoute() {
     if (selectedOptionIndex === undefined) return;
 
     const correct = selectedOptionIndex === step.checked.selectedIndex;
+    const feedback = correct ? step.checked.feedback : recordIncorrectAttempt(step.number);
     setMcqFeedbackByStep((prev) => ({
       ...prev,
-      [step.number]: correct ? step.checked.feedback : WRONG_MCQ_FEEDBACK,
+      [step.number]: feedback,
     }));
     setStatesByStep((prev) => ({ ...prev, [step.number]: correct ? 'checked' : 'filled' }));
   }
@@ -128,21 +119,23 @@ export function DesignProblemRoute() {
     if (!isTextInputStep(step) || !textAnswers || !hasRequiredTextAnswers(step, textAnswers)) return;
 
     const correct = textAnswersAreCorrect(step, textAnswers);
+    const feedback = correct ? step.checked.feedback : recordIncorrectAttempt(step.number);
     setTextFeedbackByStep((prev) => ({
       ...prev,
-      [step.number]: correct ? step.checked.feedback : WRONG_TEXT_FEEDBACK,
+      [step.number]: feedback,
     }));
     setStatesByStep((prev) => ({ ...prev, [step.number]: correct ? 'checked' : 'filled' }));
+  }
+
+  function recordIncorrectAttempt(stepNumber: number): FeedbackData {
+    const attemptsUsed = (incorrectAttemptsByStep[stepNumber] ?? 0) + 1;
+    setIncorrectAttemptsByStep((prev) => ({ ...prev, [stepNumber]: attemptsUsed }));
+    return incorrectAttemptFeedback(attemptsUsed);
   }
 
   function goToStep(nextIndex: number) {
     if (nextIndex < 0 || nextIndex >= mockSteps.length) return;
     setActiveIndex(nextIndex);
-  }
-
-  function handleMarkComplete() {
-    setStatesByStep((prev) => ({ ...prev, [step.number]: 'checked' }));
-    goToStep(activeIndex + 1);
   }
 
   return (
@@ -169,7 +162,6 @@ export function DesignProblemRoute() {
           }
           onPrev={() => goToStep(activeIndex - 1)}
           onNext={() => goToStep(activeIndex + 1)}
-          onMarkComplete={handleMarkComplete}
           isFirst={activeIndex === 0}
           isLast={activeIndex === mockSteps.length - 1}
         />
@@ -239,4 +231,13 @@ function normalizeText(value: string | undefined) {
 
 function normalizeEquation(value: string | undefined) {
   return (value ?? '').replace(/\s+/g, '');
+}
+
+function incorrectAttemptFeedback(attemptsUsed: number): FeedbackData {
+  const attemptsRemaining = Math.max(0, ATTEMPT_BUDGET - attemptsUsed);
+  return {
+    tone: 'error',
+    title: 'Incorrect',
+    body: `You have ${attemptsRemaining} ${attemptsRemaining === 1 ? 'attempt' : 'attempts'} left.`,
+  };
 }

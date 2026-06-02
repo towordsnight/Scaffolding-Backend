@@ -1,3 +1,4 @@
+import { MathAnswerInput } from '../../../components/MathAnswerInput';
 import type { LabeledEquationsStepDef, StepState } from '../../types';
 
 interface LabeledEquationsStepProps {
@@ -31,18 +32,19 @@ export function LabeledEquationsStep({
     <div className="mt-4 space-y-3">
       {equations.map((value, index) => (
         <div key={`${step.prefix}-${index}`}>
-          <label className="block text-[12px] font-medium tracking-[0.05em] text-[#5D5D5D] uppercase">
-            {step.prefix} {index + 1}:
-          </label>
-          <textarea
+          <MathAnswerInput
             value={value}
-            onChange={(event) => onChange?.(index, event.target.value)}
+            onChange={(next) => onChange?.(index, next)}
+            label={`${step.prefix} ${index + 1}:`}
+            labelClassName="block text-[12px] font-medium tracking-[0.05em] text-[#5D5D5D] uppercase"
+            multiline
             rows={value ? 2 : 2}
-            className={`mt-1.5 w-full resize-none rounded-md border bg-white px-3 py-2 font-mono text-[13px] text-black ${
+            inputClassName={`mt-1.5 w-full resize-none rounded-md border bg-white px-3 py-2 font-mono text-[13px] text-black ${
               value
                 ? 'border-[#10B981] outline-2 outline-[#10B98133]'
                 : 'border-[#E5E7EB]'
             }`}
+            renderClassName="pointer-events-none absolute inset-x-0 bottom-0 top-1.5 overflow-auto rounded-md px-3 py-2 text-[13px] text-black"
           />
         </div>
       ))}

@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { MathAnswerInput } from '../components/MathAnswerInput';
+import { ResizableSplitPane } from '../components/ResizableSplitPane';
 import {
   ApiError,
   problems,
@@ -134,114 +136,110 @@ export function ProblemRoute() {
       ) : error && !problem ? (
         <EmptyState title="Unable to load problem" message={error} />
       ) : (
-        <div className="flex min-h-[calc(100vh-73px)] overflow-hidden">
-          <aside className="flex w-full max-w-[490px] shrink-0 flex-col border-r border-[#E1E1E1] bg-[#F8F9FA]">
-            <div className="flex items-center justify-between px-4 py-4">
-              <div>
-                <p className="text-sm font-medium tracking-[0.05em] text-[#5D5D5D] uppercase">
-                  Step {steps.length === 0 ? 0 : activeIndex + 1}/{steps.length || 1}
-                </p>
-                <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-[#E5E7EB]">
-                  <div className="h-full rounded-full bg-[#615FFF]" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/dashboard')}
-                className="h-[38px] rounded-lg bg-[#615FFF] px-4 text-[15px] font-medium text-white shadow-sm transition hover:bg-[#5350E6]"
-              >
-                Mark complete
-              </button>
-            </div>
-
-            <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
-              <SidebarSection title="Problem">
-                <div className="rounded-[10px] border border-[#E5E7EB] bg-white p-3 shadow-sm">
-                  <CircuitDiagram />
-                </div>
-                <div className="mt-3 rounded-[10px] border border-[#E5E7EB] bg-white p-3 shadow-sm">
-                  <p className="text-xs font-bold tracking-[-0.02em] uppercase">
-                    Goal
-                    <span className="font-normal normal-case text-[#1E2939]">
-                      : {problem?.problem_text || 'Find the Thevenin equivalent at terminals a, b.'}
-                    </span>
+        <ResizableSplitPane
+          defaultSidebarWidth={490}
+          className="min-h-[calc(100vh-73px)]"
+          sidebar={
+            <>
+              <div className="flex items-center px-4 py-4">
+                <div>
+                  <p className="text-sm font-medium tracking-[0.05em] text-[#5D5D5D] uppercase">
+                    Step {steps.length === 0 ? 0 : activeIndex + 1}/{steps.length || 1}
                   </p>
+                  <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-[#E5E7EB]">
+                    <div className="h-full rounded-full bg-[#615FFF]" style={{ width: `${progress}%` }} />
+                  </div>
                 </div>
-              </SidebarSection>
-
-              <SidebarSection title="Step output">
-                <form
-                  onSubmit={handleSubmit}
-                  className="rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm"
-                >
-                  {activeStep ? (
-                    <>
-                      <h2 className="text-base leading-6 font-bold text-black">
-                        {displayStepPrompt(activeStep)}
-                      </h2>
-                      <p className="mt-3 text-sm leading-[19.5px] text-[#6A7282]">
-                        {activeStep.step_type === 'mcq'
-                          ? 'Choose the circuit that fulfills the requirements for this scaffold step.'
-                          : 'Use the workspace, then submit your response when you are ready.'}
-                      </p>
-
-                      <StepAnswer
-                        step={activeStep}
-                        value={activeAnswer}
-                        onChange={(next) => setAnswer(activeStep.id, next)}
-                      />
-
-                      {activeResult && (
-                        <Feedback result={activeResult} />
-                      )}
-
-                      {error && (
-                        <p role="alert" className="mt-3 text-sm text-red-600">
-                          {error}
-                        </p>
-                      )}
-
-                      <button
-                        type="submit"
-                        disabled={submitting || valueForSubmit(activeStep, activeAnswer) === null}
-                        className="mt-4 h-[50px] w-full rounded-[10px] bg-[#615FFF] text-[15px] font-bold text-white shadow-[0_4px_6px_rgba(0,0,0,0.10)] transition hover:bg-[#5350E6] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {submitting ? 'Checking...' : activeResult ? 'Check Again' : 'Confirm Selection'}
-                      </button>
-                    </>
-                  ) : (
-                    <p className="text-sm text-[#5D5D5D]">
-                      No scaffold steps are available for this problem yet.
-                    </p>
-                  )}
-                </form>
-              </SidebarSection>
-            </div>
-
-            <div className="border-t border-[#E1E1E1] bg-[#F8F9FA] px-8 py-4">
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveIndex((index) => Math.max(0, index - 1))}
-                  disabled={activeIndex === 0}
-                  className="h-[43px] rounded-[10px] border border-[#E1E1E1] bg-white text-sm font-semibold text-[#364153] shadow-sm transition hover:bg-[#F8F9FA] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveIndex((index) => Math.min(steps.length - 1, index + 1))}
-                  disabled={steps.length === 0 || activeIndex >= steps.length - 1}
-                  className="h-[43px] rounded-[10px] border border-[#E1E1E1] bg-white text-sm font-semibold text-[#364153] shadow-sm transition hover:bg-[#F8F9FA] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Next
-                </button>
               </div>
-            </div>
-          </aside>
 
-          <Scratchpad completedCount={completedCount} totalCount={steps.length} />
-        </div>
+              <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
+                <SidebarSection title="Problem">
+                  <div className="rounded-[10px] border border-[#E5E7EB] bg-white p-3 shadow-sm">
+                    <CircuitDiagram />
+                  </div>
+                  <div className="mt-3 rounded-[10px] border border-[#E5E7EB] bg-white p-3 shadow-sm">
+                    <p className="text-xs font-bold tracking-[-0.02em] uppercase">
+                      Goal
+                      <span className="font-normal normal-case text-[#1E2939]">
+                        : {problem?.problem_text || 'Find the Thevenin equivalent at terminals a, b.'}
+                      </span>
+                    </p>
+                  </div>
+                </SidebarSection>
+
+                <SidebarSection title="Step output">
+                  <form
+                    onSubmit={handleSubmit}
+                    className="rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm"
+                  >
+                    {activeStep ? (
+                      <>
+                        <h2 className="text-base leading-6 font-bold text-black">
+                          {displayStepPrompt(activeStep)}
+                        </h2>
+                        <p className="mt-3 text-sm leading-[19.5px] text-[#6A7282]">
+                          {activeStep.step_type === 'mcq'
+                            ? 'Choose the circuit that fulfills the requirements for this scaffold step.'
+                            : 'Use the workspace, then submit your response when you are ready.'}
+                        </p>
+
+                        <StepAnswer
+                          step={activeStep}
+                          value={activeAnswer}
+                          onChange={(next) => setAnswer(activeStep.id, next)}
+                        />
+
+                        {activeResult && (
+                          <Feedback result={activeResult} />
+                        )}
+
+                        {error && (
+                          <p role="alert" className="mt-3 text-sm text-red-600">
+                            {error}
+                          </p>
+                        )}
+
+                        <button
+                          type="submit"
+                          disabled={submitting || valueForSubmit(activeStep, activeAnswer) === null}
+                          className="mt-4 h-[50px] w-full rounded-[10px] bg-[#615FFF] text-[15px] font-bold text-white shadow-[0_4px_6px_rgba(0,0,0,0.10)] transition hover:bg-[#5350E6] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {submitting ? 'Checking...' : activeResult ? 'Check Again' : 'Confirm Selection'}
+                        </button>
+                      </>
+                    ) : (
+                      <p className="text-sm text-[#5D5D5D]">
+                        No scaffold steps are available for this problem yet.
+                      </p>
+                    )}
+                  </form>
+                </SidebarSection>
+              </div>
+
+              <div className="border-t border-[#E1E1E1] bg-[#F8F9FA] px-8 py-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveIndex((index) => Math.max(0, index - 1))}
+                    disabled={activeIndex === 0}
+                    className="h-[43px] rounded-[10px] border border-[#E1E1E1] bg-white text-sm font-semibold text-[#364153] shadow-sm transition hover:bg-[#F8F9FA] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveIndex((index) => Math.min(steps.length - 1, index + 1))}
+                    disabled={steps.length === 0 || activeIndex >= steps.length - 1}
+                    className="h-[43px] rounded-[10px] border border-[#E1E1E1] bg-white text-sm font-semibold text-[#364153] shadow-sm transition hover:bg-[#F8F9FA] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </>
+          }
+          workspace={<Scratchpad completedCount={completedCount} totalCount={steps.length} />}
+        />
       )}
     </ProblemShell>
   );
@@ -349,29 +347,29 @@ function StepAnswer({
 
   if (step.step_type === 'numeric') {
     return (
-      <label className="mt-4 block">
-        <span className="text-xs font-bold uppercase tracking-[0.05em] text-[#99A1AF]">Numeric answer</span>
-        <input
-          type="number"
+      <div className="mt-4">
+        <MathAnswerInput
+          label="Numeric answer"
+          inputType="number"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="mt-2 h-[50px] w-full rounded-[10px] border border-[#D1D5DC] bg-white px-4 text-[15px] focus:border-[#615FFF] focus:outline-none focus:ring-2 focus:ring-[#615FFF]/20"
+          onChange={onChange}
+          mathPreview={false}
           placeholder="Enter your answer"
         />
-      </label>
+      </div>
     );
   }
 
   return (
-    <label className="mt-4 block">
-      <span className="text-xs font-bold uppercase tracking-[0.05em] text-[#99A1AF]">Response</span>
-      <textarea
+    <div className="mt-4">
+      <MathAnswerInput
+        label="Response"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-2 min-h-28 w-full rounded-[10px] border border-[#D1D5DC] bg-white p-4 text-[15px] focus:border-[#615FFF] focus:outline-none focus:ring-2 focus:ring-[#615FFF]/20"
+        onChange={onChange}
+        multiline
         placeholder={step.step_type === 'planning' ? 'Acknowledge your plan or note the approach you will use.' : 'Write your response here.'}
       />
-    </label>
+    </div>
   );
 }
 
@@ -380,7 +378,7 @@ function Feedback({ result }: { result: StepSubmitResult }) {
     ? 'Saved. Keep going when you are ready.'
     : result.correct
       ? 'Nice work. This step is accepted.'
-      : 'Not quite yet. Revisit the model form and try again.';
+      : incorrectFeedbackMessage(result.attempts_remaining ?? 0);
   const tone = result.correct === false ? 'border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]' : 'border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]';
 
   return (
@@ -390,7 +388,137 @@ function Feedback({ result }: { result: StepSubmitResult }) {
   );
 }
 
+function incorrectFeedbackMessage(attemptsRemaining: number) {
+  const attempts = Math.max(0, attemptsRemaining);
+  return `Incorrect: You have ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'} left.`;
+}
+
+type ScratchpadTool = 'pen' | 'eraser';
+
 function Scratchpad({ completedCount, totalCount }: { completedCount: number; totalCount: number }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingRef = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [activeTool, setActiveTool] = useState<ScratchpadTool>('pen');
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = canvas?.parentElement;
+    if (!canvas || !container) return;
+    const drawingCanvas = canvas;
+    const drawingContainer = container;
+
+    function resizeCanvas() {
+      const rect = drawingContainer.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const previous = document.createElement('canvas');
+      previous.width = drawingCanvas.width;
+      previous.height = drawingCanvas.height;
+      previous.getContext('2d')?.drawImage(drawingCanvas, 0, 0);
+
+      const dpr = window.devicePixelRatio || 1;
+      drawingCanvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      drawingCanvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      drawingCanvas.style.width = `${rect.width}px`;
+      drawingCanvas.style.height = `${rect.height}px`;
+
+      const context = drawingCanvas.getContext('2d');
+      if (!context) return;
+
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      if (previous.width > 0 && previous.height > 0) {
+        context.drawImage(previous, 0, 0, previous.width, previous.height, 0, 0, drawingCanvas.width, drawingCanvas.height);
+      }
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    resizeCanvas();
+    const observer = new ResizeObserver(resizeCanvas);
+    observer.observe(drawingContainer);
+
+    return () => observer.disconnect();
+  }, []);
+
+  function getPoint(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  }
+
+  function drawPoint(point: { x: number; y: number }) {
+    const context = canvasRef.current?.getContext('2d');
+    if (!context) return;
+
+    context.save();
+    context.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
+    context.fillStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : '#111827';
+    context.beginPath();
+    context.arc(point.x, point.y, activeTool === 'eraser' ? 11 : 1.5, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
+
+  function drawLine(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const context = canvasRef.current?.getContext('2d');
+    if (!context) return;
+
+    context.save();
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
+    context.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : '#111827';
+    context.lineWidth = activeTool === 'eraser' ? 22 : 3;
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.stroke();
+    context.restore();
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const point = getPoint(event);
+    if (!point) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    isDrawingRef.current = true;
+    lastPointRef.current = point;
+    drawPoint(point);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (!isDrawingRef.current) return;
+
+    const point = getPoint(event);
+    const previousPoint = lastPointRef.current;
+    if (!point || !previousPoint) return;
+
+    drawLine(previousPoint, point);
+    lastPointRef.current = point;
+  }
+
+  function stopDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
+  }
+
+  function clearCanvas() {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    context.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+  }
+
   return (
     <main className="min-w-0 flex-1 bg-[#F8F9FA] p-4">
       <div className="flex h-full min-h-[720px] flex-col rounded-t-xl border border-[#E1E1E1] bg-white shadow-sm">
@@ -404,25 +532,40 @@ function Scratchpad({ completedCount, totalCount }: { completedCount: number; to
           </p>
         </header>
         <div className="flex h-[52px] items-center gap-2 border-b border-[#E1E1E1] px-4">
-          {['Pen', 'Square', 'Circle', 'Triangle', 'Text', 'Pan', '+', '-', 'Zoom', 'Undo', 'Redo'].map((tool, index) => (
+          {(['pen', 'eraser'] as const).map((tool) => (
             <button
               key={tool}
               type="button"
+              onClick={() => setActiveTool(tool)}
               className={[
-                'flex size-8 items-center justify-center rounded-lg text-xs font-medium text-[#62748E] transition hover:bg-[#F8F9FA]',
-                index === 0 && 'bg-[#EFF6FF] text-[#615FFF]',
+                'flex h-8 min-w-16 items-center justify-center rounded-lg px-3 text-xs font-medium text-[#62748E] transition hover:bg-[#F8F9FA]',
+                activeTool === tool && 'bg-[#EFF6FF] text-[#615FFF]',
               ].filter(Boolean).join(' ')}
-              aria-label={tool}
+              aria-pressed={activeTool === tool}
             >
-              {toolSymbol(tool)}
+              {tool === 'pen' ? 'Pen' : 'Eraser'}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={clearCanvas}
+            className="flex h-8 min-w-16 items-center justify-center rounded-lg px-3 text-xs font-medium text-[#62748E] transition hover:bg-[#F8F9FA]"
+          >
+            Clear
+          </button>
         </div>
-        <div className="relative flex-1 bg-white">
+        <div className="relative flex-1 overflow-hidden bg-white">
           <div className="absolute inset-0 bg-[radial-gradient(circle,#E5E7EB_1px,transparent_1px)] [background-size:24px_24px] opacity-40" />
-          <div className="absolute left-8 top-8 rounded-lg border border-dashed border-[#D1D5DC] bg-white/80 px-4 py-3 text-sm text-[#6A7282]">
-            Use this space to sketch circuit reductions, notes, and equations.
-          </div>
+          <canvas
+            ref={canvasRef}
+            aria-label="Scratchpad drawing canvas"
+            className="absolute inset-0 touch-none cursor-crosshair"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={stopDrawing}
+            onPointerCancel={stopDrawing}
+            onPointerLeave={stopDrawing}
+          />
         </div>
       </div>
     </main>
@@ -530,29 +673,4 @@ function valueForSubmit(step: ScaffoldStep, value: string) {
     return Number.isFinite(numeric) ? numeric : null;
   }
   return value || null;
-}
-
-function toolSymbol(tool: string) {
-  switch (tool) {
-    case 'Pen':
-      return 'P';
-    case 'Square':
-      return 'Sq';
-    case 'Circle':
-      return 'O';
-    case 'Triangle':
-      return 'Tri';
-    case 'Text':
-      return 'T';
-    case 'Pan':
-      return 'Pan';
-    case 'Zoom':
-      return 'Z';
-    case 'Undo':
-      return 'Undo';
-    case 'Redo':
-      return 'Redo';
-    default:
-      return tool;
-  }
 }

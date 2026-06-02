@@ -1,3 +1,4 @@
+import { MathAnswerInput } from '../../../components/MathAnswerInput';
 import type { NumericPlainStepDef, StepState } from '../../types';
 
 interface NumericPlainStepProps {
@@ -20,11 +21,11 @@ export function NumericPlainStep({ step, state, value: controlledValue, onChange
       {step.fieldLabel && (
         <p className="text-[14px] font-bold text-black">{step.fieldLabel}</p>
       )}
-      <input
-        type="text"
+      <MathAnswerInput
         value={value}
-        onChange={(event) => onChange?.(event.target.value)}
-        className={`mt-2 h-10 w-32 rounded-md border bg-white px-3 text-[14px] text-black ${
+        onChange={(next) => onChange?.(next)}
+        mathPreview={false}
+        inputClassName={`mt-2 h-10 w-32 rounded-md border bg-white px-3 text-[14px] text-black ${
           filled ? 'border-[#10B981] outline-2 outline-[#10B98133]' : 'border-[#E5E7EB]'
         }`}
       />

@@ -1,3 +1,4 @@
+import { MathAnswerInput } from '../../../components/MathAnswerInput';
 import type { NumericUnitStepDef, StepState } from '../../types';
 
 interface NumericUnitStepProps {
@@ -19,18 +20,20 @@ export function NumericUnitStep({ step, state, value: controlledValue, onChange 
   return (
     <div className="mt-3">
       <p className="text-[14px] font-bold text-black">{step.fieldLabel}</p>
-      <div className="mt-2 flex items-center gap-2">
-        <span className="text-[14px] font-semibold text-black">{step.leftLabel}</span>
-        <input
-          type="text"
-          value={value}
-          onChange={(event) => onChange?.(event.target.value)}
-          placeholder={step.placeholder ?? '0.00'}
-          className={`h-10 w-full rounded-md border bg-white px-3 text-[14px] text-black ${
-            filled ? 'border-[#10B981] outline-2 outline-[#10B98133]' : 'border-[#E5E7EB]'
-          }`}
-        />
-        <span className="text-[14px] text-[#1E2939]">{step.unit}</span>
+      <div className="mt-2 flex items-start gap-2">
+        <span className="pt-2 text-[14px] font-semibold text-black">{step.leftLabel}</span>
+        <div className="min-w-0 flex-1">
+          <MathAnswerInput
+            value={value}
+            onChange={(next) => onChange?.(next)}
+            mathPreview={false}
+            placeholder={step.placeholder ?? '0.00'}
+            inputClassName={`h-10 w-full rounded-md border bg-white px-3 text-[14px] text-black ${
+              filled ? 'border-[#10B981] outline-2 outline-[#10B98133]' : 'border-[#E5E7EB]'
+            }`}
+          />
+        </div>
+        <span className="pt-2 text-[14px] text-[#1E2939]">{step.unit}</span>
       </div>
     </div>
   );

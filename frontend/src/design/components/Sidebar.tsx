@@ -11,7 +11,6 @@ interface SidebarProps {
   stepCard: ReactNode;
   onPrev?: () => void;
   onNext?: () => void;
-  onMarkComplete?: () => void;
   isFirst?: boolean;
   isLast?: boolean;
 }
@@ -23,23 +22,15 @@ export function Sidebar({
   stepCard,
   onPrev,
   onNext,
-  onMarkComplete,
   isFirst = false,
   isLast = false,
 }: SidebarProps) {
   return (
     <>
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+      <div className="flex items-center px-4 pt-4 pb-3">
         <p className="text-[14px] font-medium tracking-[0.05em] text-[#5D5D5D] uppercase">
           Step {stepNumber}/{TOTAL_STEPS}
         </p>
-        <button
-          type="button"
-          onClick={onMarkComplete}
-          className="h-[38px] rounded-lg bg-[#A4A1FF] px-4 text-[15px] font-medium text-white shadow-sm transition hover:bg-[#8C8AF5]"
-        >
-          Mark complete
-        </button>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">

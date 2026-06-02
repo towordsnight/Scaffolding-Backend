@@ -96,6 +96,9 @@ export interface StepSubmitResult {
   ungraded: boolean;
   next_step_id: string | null;
   misconception_hint: string | null;
+  attempt_budget?: number;
+  attempts_used?: number;
+  attempts_remaining?: number;
 }
 
 export const auth = {
