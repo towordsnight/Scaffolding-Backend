@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
@@ -33,13 +33,9 @@ export function ProblemRoute() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Keep a ref so the cleanup effect always sees the latest sessionId without
-  // needing it in the dependency array (avoids restarting the interval).
   const sessionIdRef = useRef<string | null>(null);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
 
-  // Load problem + session + scaffold. Problem state is set independently of
-  // scaffold so the problem text is always shown even if scaffold fails.
   useEffect(() => {
     if (!id) {
       setError('Problem id is missing.');
@@ -49,26 +45,20 @@ export function ProblemRoute() {
 
     const problemId = id;
     let active = true;
-    let createdSessionId: string | null = null;
 
     async function loadProblem() {
       setLoading(true);
       setError(null);
       try {
-        // Fetch problem metadata and create session in parallel.
         const [problemResult, sessionResult] = await Promise.all([
           problems.get(problemId),
           sessions.create({ problem_id: problemId }),
         ]);
         if (!active) return;
 
-        // Problem text is ready — show it immediately regardless of scaffold outcome.
         setProblem(problemResult);
-        createdSessionId = sessionResult.session_id;
         setSessionId(sessionResult.session_id);
 
-        // Scaffold failure (no variant, profile not set, etc.) is non-fatal:
-        // the problem still renders with an empty step list.
         try {
           const scaffoldResult = await problems.getScaffold(problemId, sessionResult.session_id);
           if (!active) return;
@@ -78,7 +68,7 @@ export function ProblemRoute() {
             : 0;
           setActiveIndex(restoredIndex >= 0 ? restoredIndex : 0);
         } catch {
-          // Scaffold unavailable — problem is still usable with no steps shown.
+          // scaffold unavailable — problem still renders with no steps
         }
       } catch (err) {
         if (!active) return;
@@ -89,9 +79,7 @@ export function ProblemRoute() {
     }
 
     loadProblem();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [id]);
 
   // Heartbeat every 30 s + end session on unmount.
@@ -106,7 +94,7 @@ export function ProblemRoute() {
       const sid = sessionIdRef.current;
       if (sid) sessions.end(sid).catch(() => {});
     };
-  }, []);  // runs once; reads sessionId via ref
+  }, []);
 
   const steps = scaffold?.steps ?? [];
   const activeStep = steps[activeIndex] ?? null;
@@ -144,8 +132,7 @@ export function ProblemRoute() {
         time_spent_s: 30,
       });
       setResults((prev) => ({ ...prev, [activeStep.id]: result }));
-      // Do NOT auto-advance — let the user read the feedback first,
-      // then press Next to move on.
+      // Do NOT auto-advance — let the user read the feedback first, then press Next.
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Unable to submit this step.');
     } finally {
@@ -155,7 +142,7 @@ export function ProblemRoute() {
 
   async function handleComplete() {
     if (sessionId) {
-      try { await sessions.end(sessionId); } catch { /* ignore — cleanup effect is also registered */ }
+      try { await sessions.end(sessionId); } catch { /* cleanup effect also fires on unmount */ }
     }
     navigate('/dashboard');
   }
@@ -276,8 +263,6 @@ export function ProblemRoute() {
                 <button
                   type="button"
                   onClick={() => {
-                    // If this step was answered and the backend gave a next_step_id, jump there.
-                    // Otherwise fall back to index + 1.
                     const nextId = activeResult?.next_step_id;
                     if (nextId) {
                       const idx = steps.findIndex((s) => s.id === nextId);
@@ -303,7 +288,7 @@ export function ProblemRoute() {
 
 function ProblemShell({
   children,
-  title = 'Homework Set 1',
+  title = 'Homework Set',
   onBack,
   onComplete,
 }: {
@@ -434,8 +419,10 @@ function Feedback({ result }: { result: StepSubmitResult }) {
     ? 'Saved. Keep going when you are ready.'
     : result.correct
       ? 'Nice work. This step is accepted.'
-      : 'Not quite yet. Revisit the model form and try again.';
-  const tone = result.correct === false ? 'border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]' : 'border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]';
+      : incorrectFeedbackMessage(result.attempts_remaining ?? 0);
+  const tone = result.correct === false
+    ? 'border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]'
+    : 'border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]';
 
   return (
     <p className={`mt-4 rounded-lg border px-3 py-2 text-sm ${tone}`}>
@@ -444,7 +431,124 @@ function Feedback({ result }: { result: StepSubmitResult }) {
   );
 }
 
+function incorrectFeedbackMessage(attemptsRemaining: number) {
+  const n = Math.max(0, attemptsRemaining);
+  return `Not quite yet. ${n} ${n === 1 ? 'attempt' : 'attempts'} remaining.`;
+}
+
+type ScratchpadTool = 'pen' | 'eraser';
+
 function Scratchpad({ completedCount, totalCount }: { completedCount: number; totalCount: number }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingRef = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [activeTool, setActiveTool] = useState<ScratchpadTool>('pen');
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = canvas?.parentElement;
+    if (!canvas || !container) return;
+
+    function resizeCanvas() {
+      if (!canvas || !container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const previous = document.createElement('canvas');
+      previous.width = canvas.width;
+      previous.height = canvas.height;
+      previous.getContext('2d')?.drawImage(canvas, 0, 0);
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (previous.width > 0 && previous.height > 0) {
+        ctx.drawImage(previous, 0, 0, previous.width, previous.height, 0, 0, canvas.width, canvas.height);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    resizeCanvas();
+    const observer = new ResizeObserver(resizeCanvas);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  function getPoint(e: ReactPointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function drawPoint(point: { x: number; y: number }) {
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    ctx.save();
+    ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.fillStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : '#111827';
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, activeTool === 'eraser' ? 11 : 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLine(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : '#111827';
+    ctx.lineWidth = activeTool === 'eraser' ? 22 : 3;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLCanvasElement>) {
+    const point = getPoint(e);
+    if (!point) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isDrawingRef.current = true;
+    lastPointRef.current = point;
+    drawPoint(point);
+  }
+
+  function handlePointerMove(e: ReactPointerEvent<HTMLCanvasElement>) {
+    if (!isDrawingRef.current) return;
+    const point = getPoint(e);
+    const prev = lastPointRef.current;
+    if (!point || !prev) return;
+    drawLine(prev, point);
+    lastPointRef.current = point;
+  }
+
+  function stopDrawing(e: ReactPointerEvent<HTMLCanvasElement>) {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
+  }
+
+  function clearCanvas() {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+  }
+
   return (
     <main className="min-w-0 flex-1 bg-[#F8F9FA] p-4">
       <div className="flex h-full min-h-[720px] flex-col rounded-t-xl border border-[#E1E1E1] bg-white shadow-sm">
@@ -458,25 +562,40 @@ function Scratchpad({ completedCount, totalCount }: { completedCount: number; to
           </p>
         </header>
         <div className="flex h-[52px] items-center gap-2 border-b border-[#E1E1E1] px-4">
-          {['Pen', 'Square', 'Circle', 'Triangle', 'Text', 'Pan', '+', '-', 'Zoom', 'Undo', 'Redo'].map((tool, index) => (
+          {(['pen', 'eraser'] as const).map((tool) => (
             <button
               key={tool}
               type="button"
+              onClick={() => setActiveTool(tool)}
               className={[
-                'flex size-8 items-center justify-center rounded-lg text-xs font-medium text-[#62748E] transition hover:bg-[#F8F9FA]',
-                index === 0 && 'bg-[#EFF6FF] text-[#615FFF]',
+                'flex h-8 min-w-16 items-center justify-center rounded-lg px-3 text-xs font-medium text-[#62748E] transition hover:bg-[#F8F9FA]',
+                activeTool === tool ? 'bg-[#EFF6FF] text-[#615FFF]' : '',
               ].filter(Boolean).join(' ')}
-              aria-label={tool}
+              aria-pressed={activeTool === tool}
             >
-              {toolSymbol(tool)}
+              {tool === 'pen' ? 'Pen' : 'Eraser'}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={clearCanvas}
+            className="flex h-8 min-w-16 items-center justify-center rounded-lg px-3 text-xs font-medium text-[#62748E] transition hover:bg-[#F8F9FA]"
+          >
+            Clear
+          </button>
         </div>
-        <div className="relative flex-1 bg-white">
+        <div className="relative flex-1 overflow-hidden bg-white">
           <div className="absolute inset-0 bg-[radial-gradient(circle,#E5E7EB_1px,transparent_1px)] [background-size:24px_24px] opacity-40" />
-          <div className="absolute left-8 top-8 rounded-lg border border-dashed border-[#D1D5DC] bg-white/80 px-4 py-3 text-sm text-[#6A7282]">
-            Use this space to sketch circuit reductions, notes, and equations.
-          </div>
+          <canvas
+            ref={canvasRef}
+            aria-label="Scratchpad drawing canvas"
+            className="absolute inset-0 touch-none cursor-crosshair"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={stopDrawing}
+            onPointerCancel={stopDrawing}
+            onPointerLeave={stopDrawing}
+          />
         </div>
       </div>
     </main>
@@ -540,9 +659,7 @@ function SourceSymbol({ x, y, voltage }: { x: number; y: number; voltage: boolea
     <>
       <circle cx={x} cy={y} r="12" fill="white" stroke="black" strokeWidth="1.5" />
       {voltage ? (
-        <>
-          <path d={`M${x - 5} ${y}h10M${x} ${y - 5}v10`} stroke="black" strokeWidth="1.2" />
-        </>
+        <path d={`M${x - 5} ${y}h10M${x} ${y - 5}v10`} stroke="black" strokeWidth="1.2" />
       ) : (
         <path d={`M${x} ${y + 7}V${y - 7}m-5 5 5-5 5 5`} fill="none" stroke="black" strokeWidth="1.2" />
       )}
@@ -581,29 +698,4 @@ function valueForSubmit(step: ScaffoldStep, value: string) {
     return Number.isFinite(numeric) ? numeric : null;
   }
   return value || null;
-}
-
-function toolSymbol(tool: string) {
-  switch (tool) {
-    case 'Pen':
-      return 'P';
-    case 'Square':
-      return 'Sq';
-    case 'Circle':
-      return 'O';
-    case 'Triangle':
-      return 'Tri';
-    case 'Text':
-      return 'T';
-    case 'Pan':
-      return 'Pan';
-    case 'Zoom':
-      return 'Z';
-    case 'Undo':
-      return 'Undo';
-    case 'Redo':
-      return 'Redo';
-    default:
-      return tool;
-  }
 }

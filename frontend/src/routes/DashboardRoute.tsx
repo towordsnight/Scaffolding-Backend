@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, auth, homeworkSets, type HomeworkSet } from '../lib/api';
+import { ApiError, auth, homeworkSets, problems, type HomeworkSet } from '../lib/api';
 
 interface CourseCardView {
   id: string;
@@ -64,18 +64,25 @@ const SAMPLE_COURSES: CourseCardView[] = [
 ];
 
 const TOPIC_LABEL: Record<string, string> = {
-  kvl: 'KVL',
-  kcl: 'KCL',
-  phasors: 'Phasors',
-  impedance: 'Impedance',
-  thevenin: 'Thevenin',
+  kvl: 'KVL', kcl: 'KCL', phasors: 'Phasors', impedance: 'Impedance', thevenin: 'Thevenin',
+};
+const COURSE_LEVEL_LABEL: Record<string, string> = {
+  intro: 'Intro circuits', intermediate: 'Intermediate circuits', advanced: 'Advanced circuits',
 };
 
-const COURSE_LEVEL_LABEL: Record<string, string> = {
-  intro: 'Intro circuits',
-  intermediate: 'Intermediate circuits',
-  advanced: 'Advanced circuits',
-};
+function toCourseCard(set: HomeworkSet): CourseCardView {
+  const topic = set.topic ? TOPIC_LABEL[set.topic] ?? set.topic : 'Course';
+  const level = COURSE_LEVEL_LABEL[set.course_level] ?? set.course_level;
+  const firstProblem = set.problems[0];
+  return {
+    id: set.id,
+    title: set.name,
+    description: `${level} ${topic} problem set`,
+    term: 'Spring 2025',
+    initials: set.name.match(/[A-Za-z0-9]+/g)?.slice(0, 4).map(w => w[0]).join('').toUpperCase() || topic.slice(0, 4).toUpperCase() || '?',
+    problemId: firstProblem?.id,
+  };
+}
 
 export function DashboardRoute() {
   const navigate = useNavigate();
@@ -84,6 +91,7 @@ export function DashboardRoute() {
   const [error, setError] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [openingCourseId, setOpeningCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -95,6 +103,7 @@ export function DashboardRoute() {
         setSets(result);
       } catch (err) {
         if (!active) return;
+        if (err instanceof ApiError && err.status === 401) return;
         setError(err instanceof ApiError ? err.message : 'Unable to load dashboard courses');
       } finally {
         if (active) setLoading(false);
@@ -102,15 +111,11 @@ export function DashboardRoute() {
     }
 
     loadHomeworkSets();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
-  const courses = useMemo(() => {
-    const real = sets.map(toCourseCard);
-    return [...real, ...SAMPLE_COURSES];
-  }, [sets]);
+  // Real DB courses first, then sample placeholders.
+  const courses = useMemo(() => [...sets.map(toCourseCard), ...SAMPLE_COURSES], [sets]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -122,6 +127,24 @@ export function DashboardRoute() {
       setError(err instanceof ApiError ? err.message : 'Unable to log out');
     } finally {
       setLoggingOut(false);
+    }
+  }
+
+  async function openCourse(course: CourseCardView) {
+    setOpeningCourseId(course.id);
+    setError(null);
+    try {
+      if (course.problemId) {
+        navigate(`/problems/${course.problemId}`, { state: { setName: course.title } });
+        return;
+      }
+      if (course.id.startsWith('sample-')) return; // placeholder — no problem to open
+      const next = await problems.next();
+      navigate(`/problems/${next.id}`, { state: { setName: course.title } });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to open an assignment for this course');
+    } finally {
+      setOpeningCourseId(null);
     }
   }
 
@@ -151,9 +174,8 @@ export function DashboardRoute() {
             <CourseCard
               key={course.id}
               course={course}
-              onOpen={() => {
-                if (course.problemId) navigate(`/problems/${course.problemId}`, { state: { setName: course.title } });
-              }}
+              opening={openingCourseId === course.id}
+              onOpen={() => openCourse(course)}
             />
           ))}
         </div>
@@ -196,15 +218,27 @@ export function DashboardRoute() {
   );
 }
 
-function CourseCard({ course, onOpen }: { course: CourseCardView; onOpen: () => void }) {
+function CourseCard({
+  course,
+  opening,
+  onOpen,
+}: {
+  course: CourseCardView;
+  opening: boolean;
+  onOpen: () => void;
+}) {
   const clickable = !!course.problemId;
   return (
     <article
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
       onClick={clickable ? onOpen : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } } : undefined}
       className={[
         'overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10),0_1px_2px_rgba(0,0,0,0.10)] transition',
-        clickable ? 'cursor-pointer hover:shadow-[0_4px_12px_rgba(97,95,255,0.18)] hover:border-[#615FFF]/40' : '',
+        clickable ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_10px_20px_rgba(0,0,0,0.10)] hover:border-[#615FFF]/40 focus:outline-none focus:ring-2 focus:ring-[#615FFF]/30' : '',
       ].join(' ')}
+      aria-label={clickable ? `Open ${course.title}` : undefined}
     >
       <div className="flex h-40 items-center justify-center bg-[linear-gradient(157deg,#615FFF_0%,#4A47CC_100%)]">
         <p className="text-5xl leading-[72px] font-bold text-white/20">{course.initials}</p>
@@ -217,18 +251,22 @@ function CourseCard({ course, onOpen }: { course: CourseCardView; onOpen: () => 
             {course.description}
           </p>
           <p className="mt-1 text-xs leading-[18px] font-medium tracking-[0.05em] text-[#99A1AF] uppercase">
-            {course.term}
+            {opening ? 'Opening assignment...' : course.term}
           </p>
         </div>
 
         <div className="flex gap-3 border-t border-[#F3F4F6] pt-[9px]">
-          <IconButton label="Course calendar">
+          <IconButton label="Course calendar" onClick={(e) => e.stopPropagation()}>
             <CalendarIcon />
           </IconButton>
-          <IconButton label="Expand course details">
+          <IconButton label="Expand course details" onClick={(e) => e.stopPropagation()}>
             <ChevronDownIcon />
           </IconButton>
-          <IconButton label="Open course work" onClick={onOpen} disabled={!clickable}>
+          <IconButton
+            label="Open course work"
+            disabled={!clickable || opening}
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          >
             <DocumentIcon />
           </IconButton>
         </div>
@@ -246,7 +284,7 @@ function IconButton({
   children: ReactNode;
   label: string;
   disabled?: boolean;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
@@ -259,31 +297,6 @@ function IconButton({
       {children}
     </button>
   );
-}
-
-function toCourseCard(set: HomeworkSet): CourseCardView {
-  const topic = set.topic ? TOPIC_LABEL[set.topic] ?? set.topic : 'Course';
-  const level = COURSE_LEVEL_LABEL[set.course_level] ?? set.course_level;
-  const firstProblem = set.problems[0];
-  const card: CourseCardView = {
-    id: set.id,
-    title: set.name,
-    description: `${level} ${topic} problem set`,
-    term: 'Spring 2025',
-    initials: getInitials(set.name, topic),
-  };
-  if (firstProblem) card.problemId = firstProblem.id;
-  return card;
-}
-
-function getInitials(title: string, fallback: string) {
-  const words = title.match(/[A-Za-z0-9]+/g) ?? [];
-  const initials = words
-    .slice(0, 4)
-    .map((word) => word[0])
-    .join('')
-    .toUpperCase();
-  return initials || fallback.slice(0, 4).toUpperCase() || '?';
 }
 
 function UserIcon() {
