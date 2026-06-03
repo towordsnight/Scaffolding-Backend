@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
   problems,
@@ -19,7 +19,10 @@ const FALLBACK_OPTIONS = [
 
 export function ProblemRoute() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
+  const setName: string = (location.state as { setName?: string } | null)?.setName ?? 'Homework Set';
+
   const [problem, setProblem] = useState<PublicProblem | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [scaffold, setScaffold] = useState<ProblemScaffold | null>(null);
@@ -30,6 +33,13 @@ export function ProblemRoute() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Keep a ref so the cleanup effect always sees the latest sessionId without
+  // needing it in the dependency array (avoids restarting the interval).
+  const sessionIdRef = useRef<string | null>(null);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+
+  // Load problem + session + scaffold. Problem state is set independently of
+  // scaffold so the problem text is always shown even if scaffold fails.
   useEffect(() => {
     if (!id) {
       setError('Problem id is missing.');
@@ -39,28 +49,37 @@ export function ProblemRoute() {
 
     const problemId = id;
     let active = true;
+    let createdSessionId: string | null = null;
 
     async function loadProblem() {
       setLoading(true);
       setError(null);
       try {
+        // Fetch problem metadata and create session in parallel.
         const [problemResult, sessionResult] = await Promise.all([
           problems.get(problemId),
           sessions.create({ problem_id: problemId }),
         ]);
         if (!active) return;
 
-        const scaffoldResult = await problems.getScaffold(problemId, sessionResult.session_id);
-        if (!active) return;
-
+        // Problem text is ready — show it immediately regardless of scaffold outcome.
         setProblem(problemResult);
+        createdSessionId = sessionResult.session_id;
         setSessionId(sessionResult.session_id);
-        setScaffold(scaffoldResult);
 
-        const restoredIndex = scaffoldResult.current_step_id
-          ? scaffoldResult.steps.findIndex((step) => step.id === scaffoldResult.current_step_id)
-          : 0;
-        setActiveIndex(restoredIndex >= 0 ? restoredIndex : 0);
+        // Scaffold failure (no variant, profile not set, etc.) is non-fatal:
+        // the problem still renders with an empty step list.
+        try {
+          const scaffoldResult = await problems.getScaffold(problemId, sessionResult.session_id);
+          if (!active) return;
+          setScaffold(scaffoldResult);
+          const restoredIndex = scaffoldResult.current_step_id
+            ? scaffoldResult.steps.findIndex((s) => s.id === scaffoldResult.current_step_id)
+            : 0;
+          setActiveIndex(restoredIndex >= 0 ? restoredIndex : 0);
+        } catch {
+          // Scaffold unavailable — problem is still usable with no steps shown.
+        }
       } catch (err) {
         if (!active) return;
         setError(err instanceof ApiError ? err.message : 'Unable to load this problem.');
@@ -74,6 +93,20 @@ export function ProblemRoute() {
       active = false;
     };
   }, [id]);
+
+  // Heartbeat every 30 s + end session on unmount.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const sid = sessionIdRef.current;
+      if (sid) sessions.heartbeat(sid).catch(() => {});
+    }, 30_000);
+
+    return () => {
+      clearInterval(interval);
+      const sid = sessionIdRef.current;
+      if (sid) sessions.end(sid).catch(() => {});
+    };
+  }, []);  // runs once; reads sessionId via ref
 
   const steps = scaffold?.steps ?? [];
   const activeStep = steps[activeIndex] ?? null;
@@ -111,15 +144,20 @@ export function ProblemRoute() {
         time_spent_s: 30,
       });
       setResults((prev) => ({ ...prev, [activeStep.id]: result }));
-      if (result.correct !== false && result.next_step_id) {
-        const nextIndex = steps.findIndex((step) => step.id === result.next_step_id);
-        if (nextIndex >= 0) setActiveIndex(nextIndex);
-      }
+      // Do NOT auto-advance — let the user read the feedback first,
+      // then press Next to move on.
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Unable to submit this step.');
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleComplete() {
+    if (sessionId) {
+      try { await sessions.end(sessionId); } catch { /* ignore — cleanup effect is also registered */ }
+    }
+    navigate('/dashboard');
   }
 
   if (!id) {
@@ -132,9 +170,9 @@ export function ProblemRoute() {
 
   return (
     <ProblemShell
-      title="Homework Set 1"
-      onBack={() => navigate('/dashboard')}
-      onComplete={() => navigate('/dashboard')}
+      title={setName}
+      onBack={handleComplete}
+      onComplete={handleComplete}
     >
       {loading ? (
         <EmptyState title="Loading workspace" message="Preparing the problem and scratchpad..." />
@@ -154,7 +192,7 @@ export function ProblemRoute() {
               </div>
               <button
                 type="button"
-                onClick={() => navigate('/dashboard')}
+                onClick={handleComplete}
                 className="h-[38px] rounded-lg bg-[#615FFF] px-4 text-[15px] font-medium text-white shadow-sm transition hover:bg-[#5350E6]"
               >
                 Mark complete
@@ -237,7 +275,16 @@ export function ProblemRoute() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveIndex((index) => Math.min(steps.length - 1, index + 1))}
+                  onClick={() => {
+                    // If this step was answered and the backend gave a next_step_id, jump there.
+                    // Otherwise fall back to index + 1.
+                    const nextId = activeResult?.next_step_id;
+                    if (nextId) {
+                      const idx = steps.findIndex((s) => s.id === nextId);
+                      if (idx >= 0) { setActiveIndex(idx); return; }
+                    }
+                    setActiveIndex((index) => Math.min(steps.length - 1, index + 1));
+                  }}
                   disabled={steps.length === 0 || activeIndex >= steps.length - 1}
                   className="h-[43px] rounded-[10px] border border-[#E1E1E1] bg-white text-sm font-semibold text-[#364153] shadow-sm transition hover:bg-[#F8F9FA] disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -523,9 +570,6 @@ function TopButton({ children, onClick }: { children: ReactNode; onClick?: () =>
 }
 
 function displayStepPrompt(step: ScaffoldStep) {
-  if (step.step_order === 1 && step.step_type === 'mcq') {
-    return 'Recall: What does the Thevenin equivalent model look like?';
-  }
   return step.prompt_text;
 }
 

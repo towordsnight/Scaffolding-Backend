@@ -14,10 +14,10 @@ interface CourseCardView {
 const SAMPLE_COURSES: CourseCardView[] = [
   {
     id: 'sample-advising',
-    title: 'ECEE Student Advising Resources',
-    description: 'ECEE Student Advising Resources and Information',
+    title: 'ECE Student Advising Resources',
+    description: 'ECE Student Advising Resources and Information',
     term: 'Spring 2025',
-    initials: 'ECEE',
+    initials: 'ECE',
   },
   {
     id: 'sample-ee-242',
@@ -108,8 +108,8 @@ export function DashboardRoute() {
   }, []);
 
   const courses = useMemo(() => {
-    if (sets.length === 0) return SAMPLE_COURSES;
-    return sets.map(toCourseCard);
+    const real = sets.map(toCourseCard);
+    return [...real, ...SAMPLE_COURSES];
   }, [sets]);
 
   async function handleLogout() {
@@ -152,7 +152,7 @@ export function DashboardRoute() {
               key={course.id}
               course={course}
               onOpen={() => {
-                if (course.problemId) navigate(`/problems/${course.problemId}`);
+                if (course.problemId) navigate(`/problems/${course.problemId}`, { state: { setName: course.title } });
               }}
             />
           ))}
@@ -197,8 +197,15 @@ export function DashboardRoute() {
 }
 
 function CourseCard({ course, onOpen }: { course: CourseCardView; onOpen: () => void }) {
+  const clickable = !!course.problemId;
   return (
-    <article className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10),0_1px_2px_rgba(0,0,0,0.10)]">
+    <article
+      onClick={clickable ? onOpen : undefined}
+      className={[
+        'overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10),0_1px_2px_rgba(0,0,0,0.10)] transition',
+        clickable ? 'cursor-pointer hover:shadow-[0_4px_12px_rgba(97,95,255,0.18)] hover:border-[#615FFF]/40' : '',
+      ].join(' ')}
+    >
       <div className="flex h-40 items-center justify-center bg-[linear-gradient(157deg,#615FFF_0%,#4A47CC_100%)]">
         <p className="text-5xl leading-[72px] font-bold text-white/20">{course.initials}</p>
       </div>
@@ -221,7 +228,7 @@ function CourseCard({ course, onOpen }: { course: CourseCardView; onOpen: () => 
           <IconButton label="Expand course details">
             <ChevronDownIcon />
           </IconButton>
-          <IconButton label="Open course work" onClick={onOpen} disabled={!course.problemId}>
+          <IconButton label="Open course work" onClick={onOpen} disabled={!clickable}>
             <DocumentIcon />
           </IconButton>
         </div>

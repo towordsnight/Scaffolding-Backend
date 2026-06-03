@@ -80,7 +80,7 @@ export interface ScaffoldStep {
 
 export interface ProblemScaffold {
   problem_id: string;
-  variant_id: string;
+  variant_id: string | null;
   learner_profile: LearnerProfile;
   total_steps: number;
   current_step_id: string | null;

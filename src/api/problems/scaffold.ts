@@ -28,18 +28,37 @@ export async function getScaffold(req: Request, res: Response): Promise<void> {
     'SELECT learner_profile FROM students WHERE id=$1',
     [studentId],
   );
-  const profile = studentRow.rows[0]?.learner_profile;
-  if (!profile) {
-    res.status(400).json({ error: 'learner_profile not set. Complete onboarding declaration first.' });
-    return;
-  }
+  // Default to 'starter' when onboarding declaration has not been completed yet.
+  const profile: LearnerProfile = studentRow.rows[0]?.learner_profile ?? 'starter';
 
-  const variantRow = await pool.query<{ id: string }>(
+  // Try the student's own profile first; fall back to 'starter' so problems are
+  // always accessible before a full variant library is seeded.
+  let variantRow = await pool.query<{ id: string }>(
     'SELECT id FROM problem_variants WHERE problem_id=$1 AND learner_profile=$2',
     [problemId, profile],
   );
+  if (variantRow.rows.length === 0 && profile !== 'starter') {
+    variantRow = await pool.query<{ id: string }>(
+      'SELECT id FROM problem_variants WHERE problem_id=$1 AND learner_profile=$2',
+      [problemId, 'starter'],
+    );
+  }
+  // No variant of any kind — return empty steps so the frontend degrades gracefully.
   if (variantRow.rows.length === 0) {
-    res.status(404).json({ error: 'No scaffold variant exists for this problem and learner profile' });
+    const { session_id } = req.query as { session_id?: string };
+    let currentStepId: string | null = null;
+    if (session_id) {
+      const redisSession = await getSession(session_id);
+      currentStepId = redisSession?.current_step_id ?? null;
+    }
+    res.status(200).json({
+      problem_id: problemId,
+      variant_id: null,
+      learner_profile: profile,
+      total_steps: 0,
+      current_step_id: currentStepId,
+      steps: [],
+    });
     return;
   }
   const variantId = variantRow.rows[0].id;
