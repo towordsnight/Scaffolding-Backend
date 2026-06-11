@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { CircuitDiagram } from '../design/components/CircuitDiagram';
+import { CircuitChoiceTile } from '../design/components/OptionCircuit';
+import type { CircuitOptionKind } from '../design/types';
 import {
   ApiError,
   problems,
@@ -15,6 +18,13 @@ const FALLBACK_OPTIONS = [
   { key: 'B', text: 'Current source with a series resistance' },
   { key: 'C', text: 'Current source with a parallel resistance' },
   { key: 'D', text: 'Voltage source with a parallel resistance' },
+];
+
+const CIRCUIT_OPTION_KINDS: CircuitOptionKind[] = [
+  'voltage_series',
+  'current_series',
+  'current_parallel',
+  'voltage_parallel',
 ];
 
 export function ProblemRoute() {
@@ -358,29 +368,16 @@ function StepAnswer({
   if (step.step_type === 'mcq') {
     const options = step.options && step.options.length > 0 ? step.options : FALLBACK_OPTIONS;
     return (
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(168px, 1fr))' }}>
         {options.map((option, index) => (
-          <button
+          <CircuitChoiceTile
             key={option.key}
-            type="button"
+            kind={CIRCUIT_OPTION_KINDS[index] ?? CIRCUIT_OPTION_KINDS[0]}
+            selected={value === option.key}
+            ariaLabel={`Select answer choice ${option.key}: ${option.text}`}
+            description={option.text}
             onClick={() => onChange(option.key)}
-            className={[
-              'min-h-[138px] rounded-lg border-2 bg-white p-3 text-left transition',
-              value === option.key
-                ? 'border-[#615FFF] shadow-[0_0_0_3px_rgba(97,95,255,0.12)]'
-                : 'border-[#D1D5DC] hover:border-[#99A1AF]',
-            ].join(' ')}
-          >
-            <span
-              className={[
-                'flex size-[13px] items-center justify-center rounded-full border',
-                value === option.key ? 'border-[#615FFF]' : 'border-[#99A1AF]',
-              ].join(' ')}
-            >
-              {value === option.key && <span className="size-[7px] rounded-full bg-[#615FFF]" />}
-            </span>
-            <CircuitOption index={index} label={option.text} />
-          </button>
+          />
         ))}
       </div>
     );
@@ -600,78 +597,6 @@ function Scratchpad({ completedCount, totalCount }: { completedCount: number; to
       </div>
     </main>
   );
-}
-
-function CircuitDiagram() {
-  return (
-    <svg viewBox="0 0 375 192" role="img" aria-label="Circuit diagram" className="h-48 w-full">
-      <rect width="375" height="192" fill="white" />
-      <path d="M70 45h215v105H70z" fill="none" stroke="black" strokeWidth="2" />
-      <path d="M70 96h44m36 0h55m0-51v105M205 96h55m25 0h28" fill="none" stroke="black" strokeWidth="2" />
-      <circle cx="70" cy="96" r="16" fill="white" stroke="black" strokeWidth="2" />
-      <circle cx="260" cy="96" r="16" fill="white" stroke="black" strokeWidth="2" />
-      <path d="M114 96l6-8 8 16 8-16 8 16 6-8M205 82l8 6-16 8 16 8-16 8 8 6M285 82l8 6-16 8 16 8-16 8 8 6" fill="none" stroke="black" strokeWidth="2" />
-      <text x="53" y="100" fontSize="12">9V</text>
-      <text x="120" y="85" fontSize="12">5 ohm</text>
-      <text x="196" y="75" fontSize="12">25 ohm</text>
-      <text x="276" y="75" fontSize="12">60 ohm</text>
-      <text x="220" y="42" fontSize="12">1.8 A</text>
-      <text x="220" y="168" fontSize="12">10 ohm</text>
-      <text x="318" y="100" fontSize="13">a</text>
-      <text x="318" y="154" fontSize="13">b</text>
-      <text x="178" y="40" fontSize="12">20 ohm</text>
-      <path d="M205 150h80" fill="none" stroke="black" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function CircuitOption({ index, label }: { index: number; label: string }) {
-  const isVoltage = index === 0 || index === 3;
-  const isSeries = index === 0 || index === 1;
-  return (
-    <div className="mt-2 flex flex-col items-center gap-2">
-      <svg viewBox="0 0 150 92" aria-hidden="true" className="h-20 w-full">
-        {isSeries ? (
-          <>
-            <path d="M24 65h90M24 28h30m42 0h18M75 28v37" stroke="black" strokeWidth="1.5" fill="none" />
-            <SourceSymbol x={24} y={46} voltage={isVoltage} />
-            <Resistor x={56} y={28} horizontal />
-            <text x="58" y="19" fontSize="10">{isVoltage ? 'RTH' : 'RN'}</text>
-            <text x="15" y="49" fontSize="10">{isVoltage ? 'vTH' : 'iN'}</text>
-          </>
-        ) : (
-          <>
-            <path d="M32 20h92M32 72h92M72 20v52M98 20v52" stroke="black" strokeWidth="1.5" fill="none" />
-            <SourceSymbol x={32} y={46} voltage={isVoltage} />
-            <Resistor x={98} y={27} />
-            <text x="104" y="51" fontSize="10">{isVoltage ? 'RTH' : 'RN'}</text>
-            <text x="18" y="49" fontSize="10">{isVoltage ? 'vTH' : 'iN'}</text>
-          </>
-        )}
-      </svg>
-      <p className="line-clamp-2 text-center text-xs leading-4 text-[#364153]">{label}</p>
-    </div>
-  );
-}
-
-function SourceSymbol({ x, y, voltage }: { x: number; y: number; voltage: boolean }) {
-  return (
-    <>
-      <circle cx={x} cy={y} r="12" fill="white" stroke="black" strokeWidth="1.5" />
-      {voltage ? (
-        <path d={`M${x - 5} ${y}h10M${x} ${y - 5}v10`} stroke="black" strokeWidth="1.2" />
-      ) : (
-        <path d={`M${x} ${y + 7}V${y - 7}m-5 5 5-5 5 5`} fill="none" stroke="black" strokeWidth="1.2" />
-      )}
-    </>
-  );
-}
-
-function Resistor({ x, y, horizontal }: { x: number; y: number; horizontal?: boolean }) {
-  if (horizontal) {
-    return <path d={`M${x} ${y}l5-7 5 14 5-14 5 14 5-14 5 7`} fill="none" stroke="black" strokeWidth="1.5" />;
-  }
-  return <path d={`M${x} ${y}l-7 5 14 5-14 5 14 5-14 5 7 5`} fill="none" stroke="black" strokeWidth="1.5" />;
 }
 
 function TopButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
