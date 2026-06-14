@@ -1,9 +1,11 @@
-// One-time script to seed the multi-step Thévenin problem with four
-// profile-conditioned scaffold variants.
-// Run: npx tsx scripts/import-thevenin-problem.ts
+// Script to seed the multi-step Thévenin problem with four profile-conditioned scaffold variants.
+// Run:         npx tsx scripts/import-thevenin-problem.ts
+// Re-seed:     npx tsx scripts/import-thevenin-problem.ts --force
 //
-// Numeric ground truths (Vth, Isc, Rth, # essential nodes, # KCL equations)
-// are intentionally left NULL — the instructor will fill them in later via SQL.
+// Ground truths for this circuit (9 V source, 1.8 A source, 5/20/25/60/10 Ω):
+//   Essential nodes : 2      KCL equations : 1
+//   Node voltage V  : 30 V   Vth (Vab)     : 15 V
+//   Isc             : 1.5 A  Rth           : 20 Ω  (dead-network analysis)
 
 import 'dotenv/config';
 import pool from '../src/db/client';
@@ -42,16 +44,16 @@ const STARTER_STEPS: StepSpec[] = [
   { step_type: 'planning', prompt_text: 'Let\'s start from finding Vth. Where is Vth in our diagram?' },
   { step_type: 'mcq',      prompt_text: 'What is the most helpful next step / technique for finding Vth?', options: METHOD_OPTIONS },
   { step_type: 'planning', prompt_text: 'A good next step is to choose a reference node. Choose the most convenient reference node (ground).' },
-  { step_type: 'numeric',  prompt_text: 'How many essential nodes do we have in the circuit?' },
-  { step_type: 'numeric',  prompt_text: 'How many KCL equations do we need to solve this problem?' },
+  { step_type: 'numeric',  prompt_text: 'How many essential nodes do we have in the circuit?',         ground_truth_answer: 2,    tolerance: 0.01 },
+  { step_type: 'numeric',  prompt_text: 'How many KCL equations do we need to solve this problem?',   ground_truth_answer: 1,    tolerance: 0.01 },
   { step_type: 'open',     prompt_text: 'Write down the KCL equations and solve them.' },
-  { step_type: 'numeric',  prompt_text: 'Find Vth (= Vab). Enter your value in volts.' },
+  { step_type: 'numeric',  prompt_text: 'Find Vth (= Vab). Enter your value in volts.',               ground_truth_answer: 15,   tolerance: 0.01 },
   { step_type: 'mcq',      prompt_text: 'Now we need to find Rth. What is the most helpful next step / technique for finding Rth?', options: RTH_METHOD_OPTIONS },
   { step_type: 'open',     prompt_text: 'Redraw the circuit diagram and label all mesh currents / node voltages needed to determine the short-circuit current.' },
   { step_type: 'open',     prompt_text: 'Identify the supermesh in the circuit and write down the constraint equation.' },
   { step_type: 'open',     prompt_text: 'Write down the mesh-current equations and solve them.' },
-  { step_type: 'numeric',  prompt_text: 'Find Isc (the short-circuit current). Enter your value in amperes.' },
-  { step_type: 'numeric',  prompt_text: 'Find Rth (= Vth / Isc). Enter your value in ohms.' },
+  { step_type: 'numeric',  prompt_text: 'Find Isc (the short-circuit current). Enter your value in amperes.',  ground_truth_answer: 1.5,  tolerance: 0.01 },
+  { step_type: 'numeric',  prompt_text: 'Find Rth. Enter your value in ohms.',                                  ground_truth_answer: 20,   tolerance: 0.01 },
 ];
 
 // ── Profile 2 (exploring) — less hand-holding, dual-path ──────────────────────
@@ -61,14 +63,14 @@ const EXPLORING_STEPS: StepSpec[] = [
   { step_type: 'planning', prompt_text: 'To find Vth, what quantity do we need from the circuit? (Vab)' },
   { step_type: 'mcq',      prompt_text: 'Choose a method to find Vth.', options: METHOD_OPTIONS },
   { step_type: 'open',     prompt_text: 'Choose a reference node (ground). What makes this node convenient?' },
-  { step_type: 'numeric',  prompt_text: 'How many KCL equations do we need to solve this problem?' },
+  { step_type: 'numeric',  prompt_text: 'How many KCL equations do we need to solve this problem?',  ground_truth_answer: 1,    tolerance: 0.01 },
   { step_type: 'open',     prompt_text: 'Write down the KCL equations and solve them.' },
-  { step_type: 'numeric',  prompt_text: 'Enter Vth in volts.' },
+  { step_type: 'numeric',  prompt_text: 'Enter Vth in volts.',                                        ground_truth_answer: 15,   tolerance: 0.01 },
   { step_type: 'planning', prompt_text: 'Now use the short-circuit current method for Rth. Short-circuit terminals a, b and redraw the circuit (a and b connected by a wire).' },
   { step_type: 'planning', prompt_text: 'What changes in the circuit after the short? (Vab = 0)' },
   { step_type: 'open',     prompt_text: 'Set up the equations needed to find Isc.' },
-  { step_type: 'numeric',  prompt_text: 'Solve for Isc. Enter your value in amperes.' },
-  { step_type: 'numeric',  prompt_text: 'Compute Rth = Vth / Isc. Enter your value in ohms.' },
+  { step_type: 'numeric',  prompt_text: 'Solve for Isc. Enter your value in amperes.',                ground_truth_answer: 1.5,  tolerance: 0.01 },
+  { step_type: 'numeric',  prompt_text: 'Enter Rth in ohms.',                                         ground_truth_answer: 20,   tolerance: 0.01 },
 ];
 
 // ── Profile 3 (distracted) — short prompts, continuous flow ───────────────────
@@ -76,17 +78,17 @@ const DISTRACTED_STEPS: StepSpec[] = [
   { step_type: 'planning', prompt_text: 'Goal: find the Thévenin equivalent at terminals a, b.' },
   { step_type: 'mcq',      prompt_text: 'First, find Vth using your preferred method.', options: METHOD_OPTIONS },
   { step_type: 'open',     prompt_text: 'Set up your circuit and choose a reference / ground node.' },
-  { step_type: 'numeric',  prompt_text: 'Set up your KCL equations and enter your value for Vth (volts).' },
+  { step_type: 'numeric',  prompt_text: 'Set up your KCL equations and enter your value for Vth (volts).',          ground_truth_answer: 15,   tolerance: 0.01 },
   { step_type: 'mcq',      prompt_text: 'Now find Rth using one of the following methods.', options: RTH_METHOD_OPTIONS },
-  { step_type: 'numeric',  prompt_text: 'Write down the mesh-current equations and enter your value for Isc (amperes).' },
-  { step_type: 'numeric',  prompt_text: 'Solve and enter your value for Rth (ohms).' },
+  { step_type: 'numeric',  prompt_text: 'Write down the mesh-current equations and enter your value for Isc (amperes).', ground_truth_answer: 1.5, tolerance: 0.01 },
+  { step_type: 'numeric',  prompt_text: 'Solve and enter your value for Rth (ohms).',                               ground_truth_answer: 20,   tolerance: 0.01 },
 ];
 
 // ── Profile 4 (independent) — minimal ────────────────────────────────────────
 const INDEPENDENT_STEPS: StepSpec[] = [
   { step_type: 'planning', prompt_text: 'Goal: find the Thévenin equivalent at terminals a, b.' },
-  { step_type: 'numeric',  prompt_text: 'Enter Vth in volts.' },
-  { step_type: 'numeric',  prompt_text: 'Enter Rth in ohms.' },
+  { step_type: 'numeric',  prompt_text: 'Enter Vth in volts.',  ground_truth_answer: 15, tolerance: 0.01 },
+  { step_type: 'numeric',  prompt_text: 'Enter Rth in ohms.',   ground_truth_answer: 20, tolerance: 0.01 },
 ];
 
 const VARIANTS: Array<{ profile: LearnerProfile; steps: StepSpec[] }> = [
@@ -101,15 +103,25 @@ async function main(): Promise<void> {
   try {
     await client.query('BEGIN');
 
-    // Idempotency: skip if a Thévenin problem with this prompt already exists.
+    const force = process.argv.includes('--force');
+
     const existing = await client.query<{ id: string }>(
       'SELECT id FROM problems WHERE topic = $1 AND problem_text = $2',
       ['thevenin', PROBLEM_TEXT],
     );
     if (existing.rows.length > 0) {
-      console.log(`Thévenin problem already seeded (id=${existing.rows[0].id}). Skipping.`);
-      await client.query('ROLLBACK');
-      return;
+      if (!force) {
+        console.log(`Thévenin problem already seeded (id=${existing.rows[0].id}). Run with --force to re-seed.`);
+        await client.query('ROLLBACK');
+        return;
+      }
+      // TRUNCATE bypasses append-only rules; CASCADE removes variants, steps, and attempts.
+      await client.query('TRUNCATE problem_step_attempts RESTART IDENTITY CASCADE');
+      await client.query(
+        'DELETE FROM problems WHERE topic = $1 AND problem_text = $2',
+        ['thevenin', PROBLEM_TEXT],
+      );
+      console.log('Cleared existing Thévenin problem and dependent rows.');
     }
 
     // Parent problem — ground_truth_answer is required NUMERIC, so use 0 as a
@@ -165,7 +177,6 @@ async function main(): Promise<void> {
 
     await client.query('COMMIT');
     console.log(`Done. Inserted 1 problem, ${VARIANTS.length} variants, ${totalSteps} steps.`);
-    console.log('Note: numeric ground truths are NULL — fill them in via SQL when ready.');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

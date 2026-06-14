@@ -1,16 +1,15 @@
 # ECE Adaptive Scaffold — CLAUDE.md
 # Read at the start of every Claude Code session.
 # Keep this file concise. Link to external files for detail.
-# Last updated: April 15, 2026
+# Last updated: June 11, 2026
 
 ================================================================================
 PROJECT OVERVIEW
 ================================================================================
 
 Adaptive AI tutoring system for ECE students (KVL, KCL, phasors, impedance).
-Modulates hint depth, pacing, and tone based on real-time cognitive/emotional
-state. Fixed instructor-authored problem DB. Students only (no instructor
-dashboard in MVP).
+Modulates hint depth, pacing, and tone based on real-time cognitive/emotional state.
+Fixed instructor-authored problem DB. Students only (no instructor dashboard in MVP).
 
 Build: Solo. Start: Apr 14 2026. Launch: Jun 1 2026.
 Stack: Node.js (TypeScript) + Supabase (Postgres + Redis) + Vercel/Railway
@@ -21,51 +20,6 @@ Auth:  Email + JWT (httpOnly cookie). No SSO in MVP.
 ================================================================================
 CURRENT SPRINT
 ================================================================================
-
-Update this section at the start of each sprint.
-
-SPRINT 1 — Foundation + Problem DB (Apr 14–27) ✅ DONE
-Goal: Student can log in, complete onboarding, view a tagged problem.
-      No AI. No adaptation. Just a proven data pipeline.
-
-Week 1 (Apr 14–20):
-  [x] Deploy Postgres schema (schema.sql already written — source of truth)
-  [x] Email auth + JWT (httpOnly cookie)
-  [x] Redis session store
-  [x] Event logging endpoint
-
-Week 2 (Apr 21–27):
-  [x] Problem DB import + tagging script
-  [x] Onboarding flow: 3 self-declaration questions + 3 diagnostic problems
-  [x] Static problem viewer
-
-Exit criteria: Student registers → completes onboarding → sees a tagged problem.
-               Skill vector written correctly. Event log receiving events.
-
-──────────────────────────────────────────────────────────────────────────────
-
-SPRINT 2 — Adaptive Engine (Apr 28 – May 11) ✅ DONE
-Goal: System tracks student behavior in real time and updates skill vector and
-      cognitive state deterministically. No AI. Every Sprint 3 dependency ready.
-
-Week 1 (Apr 28 – May 4):
-  [x] src/services/skill-updater.ts — hysteresis tier logic
-  [x] src/services/cognitive-state.ts — stress blend + weight decay
-  [x] Wire both into POST /api/problems/:id/submit
-
-Week 2 (May 5 – May 11):
-  [x] src/services/adaptive-engine.ts — threshold evaluation + intervention logging
-  [x] Wire idle check into POST /api/sessions/:id/heartbeat
-  [x] Wire error/hint-budget check into POST /api/problems/:id/submit
-  [x] Wire checkin recalculation into POST /api/events (checkin_response)
-
-Exit criteria:
-  Correct answer ×2 with 0 hints → tier advances for that topic.
-  Checkin response updates stress → adaptive_config thresholds recalculate.
-  Idle threshold breach on heartbeat → row written to intervention_events.
-  All three service files have unit tests.
-
-──────────────────────────────────────────────────────────────────────────────
 
 SPRINT 3 — AI Tutor (May 12 – May 25)
 Goal: Students receive streamed AI hints and targeted feedback. Adaptive engine
@@ -89,6 +43,8 @@ Exit criteria:
   POST /api/feedback names an error from error_taxonomy[]; never reveals ground truth.
   Idle intervention on heartbeat → hint auto-delivered to client.
   All new endpoints have tests (streaming mocked).
+
+Full design: docs/sprint3-backend-design.md (includes prompt template + adaptation logic)
 
 
 ================================================================================
@@ -208,167 +164,66 @@ NON-NEGOTIABLE CONSTRAINTS
 8. Skeleton UI must appear in < 300ms before any AI response.
    AI calls are always streamed. Never wait for full response before rendering.
 
-9. Before writing ANY code, follow the Planning-First Rule (see section below).
+9. Before writing ANY code, follow the Planning-First Rule.
+   Full rule: docs/working-style.md
 
 10. When gaps are found during any checklist, audit, or review:
     - List every gap with a one-line description.
-    - Evaluate the fix: is it self-contained, low-risk, and unambiguous?
-    - If yes → fix it immediately without asking for approval.
-    - If the fix requires an architectural decision or has non-obvious trade-offs
-      → surface only that decision to the user. Fix everything else.
+    - Self-contained, low-risk, unambiguous fix → fix immediately without asking.
+    - Architectural decision or non-obvious trade-offs → surface to user. Fix everything else.
 
 
 ================================================================================
-WORKING STYLE RULES
+CODE REVIEW GATE
 ================================================================================
 
-These rules govern how Claude communicates and implements changes in every session.
+Trigger:
+  Task complete: run /code-review on the diff before marking [x]. Fix all Critical/High
+                 findings before the task is considered done.
+  PR:           run all 9 categories below as a manual checklist. Label every finding
+                with severity before taking any action.
 
-1. Explain before acting.
-   Before making any code change, describe what already exists in that area.
-   Design the full plan and ask ALL necessary questions instead of assuming.
-   Never jump straight to implementation.
+Severity labels: Critical / High / Medium / Low
+  Apply per Constraint #10: Critical/High self-contained fix → fix immediately.
+  Architectural or non-obvious trade-off → surface to user. Fix everything else.
 
-2. Research before guessing.
-   If the user says "I don't know" to a question, do not assume — research the
-   answer using the codebase and established best practices, then propose a
-   strategy with clear justification before proceeding.
+Finding format:
+  [SEVERITY] Category — file:line — one-line description — fix or ask
 
-3. Explain every change in plain English with three parts:
-   - What is it: what does this piece do in one plain sentence.
-   - How it gets its value: where the data or behavior comes from.
-   - Why to trust it: is this an established pattern in the codebase, or a
-     best guess? Say which.
+9 categories to check:
 
-4. One change at a time.
-   Implement a single change, explain it, and confirm it works before moving
-   to the next. Never batch unreviewed changes.
+  Reliability & Performance
+  1. Unhandled errors       — missing try-catch, swallowed rejections, no global
+                              error middleware
+  2. Missing transactions   — two writes that must be atomic but share no transaction
+  3. Race conditions        — check-then-act without a lock; non-atomic Redis+Postgres
+                              dual writes
+  4. N+1 query loops        — serial DB calls inside for-loops that should be batched
 
-5. No jargon in summaries.
-   Do not use function names, API method names, or technical syntax in
-   plain-English summaries unless the user explicitly asks for technical detail.
+  Security
+  5. Security               — input validation at system boundaries, auth bypass paths,
+                              PII/raw email in logs or responses, injection vectors,
+                              missing CSRF on state-changing routes
 
-
-================================================================================
-PLANNING-FIRST RULE
-================================================================================
-
-Before writing ANY code, follow this three-phase workflow:
-
-Phase 1: High-Level Plan (requires user approval)
-  - Present a brief overview: what modules, in what order, and why.
-  - Flag any major architectural decisions or trade-offs that need input.
-  - Wait for approval on this high-level plan before proceeding.
-
-Phase 2: Detailed Plan (self-validated, no approval needed)
-  Break the approved plan into atomic, independently testable modules.
-  Each module must have a clear input, output, and single responsibility.
-
-  Run a check-evaluate-refine loop before writing any code:
-
-  1. Check — Walk through the full plan step by step.
-     Are dependencies respected? Is execution order correct?
-     Does each module have a concrete verification method
-     (test case, expected output, assertion)?
-
-  2. Evaluate — Stress-test feasibility. For each module, ask:
-     - Can this be done with the current codebase and available APIs?
-     - What are the edge cases, bottlenecks, and external risks?
-     - Are there circular dependencies or conflicting assumptions?
-     - Does any module touch shared state or have high coupling?
-
-  3. Refine — Fix every issue found. Adjust order, split or merge modules,
-     add missing steps.
-
-  4. Pass — Only when the plan survives check and evaluate with no open
-     issues, proceed to implementation.
-
-  If the plan cannot pass after refinement, surface the blocker before
-  continuing.
-
-Phase 3: Implementation
-  - Implement one module at a time. Verify each works before moving on.
-  - If a module fails or reveals a flaw in the plan, stop and re-plan —
-    do not patch around it.
-  - No silent scope changes. If the plan needs to change, explain what
-    changed and why before continuing.
+  AI-generated code structure
+  6. Code duplication       — same logic in 2+ files that should be a shared utility
+  7. Fat functions          — handler mixes DB, Redis, business logic, and HTTP response
+                              in one function with no separation
+  8. Hardcoded values       — limits, thresholds, magic numbers that belong in
+                              adaptive_config or a named constant
+  9. Tight coupling         — handler imports from 3+ services directly, or services
+                              call each other circularly with no abstraction layer
 
 
 ================================================================================
-STUDENT PROFILES (design context — do not change)
+WORKING STYLE
 ================================================================================
 
-Alex   — Sophomore, intro circuits. High stress. Shaky KVL/KCL.
-         response_length_budget = 'medium' (2–3 sentences + follow-up question)
-         idle_threshold = 60s, hint_budget = 4
+Explain before acting. Research before guessing. One change at a time. No jargon.
+Every change needs: what it is / how it gets its value / why to trust it.
 
-Jordan — Junior, AC circuits. ADHD pattern. Fragmented sessions.
-         response_length_budget = 'brief' (short chunked exchange)
-         idle_threshold = 60s, hint_budget = 4
-         adhd_flag = true → sets all thresholds to ADHD tier
-
-Priya  — Grad student. Confident, time-constrained. Uses as verification tool.
-         response_length_budget = 'short' (1 sentence max)
-         idle_threshold = 180s, hint_budget = 2
-
-
-================================================================================
-AI PROMPT TEMPLATE (Sprint 3 reference)
-================================================================================
-
-System:
-  You are a circuit analysis tutor.
-  Problem: {problem_text}
-  Topic: {topic}
-  Student tier: {skill[topic]}
-  Hint depth: {hint_depth_preference}   [socratic | concrete]
-  Response budget: {response_length_budget} sentences maximum.
-  Error taxonomy for this problem: {error_taxonomy[]}
-  Student's current work: {current_problem_state}
-
-User:
-  The student has been idle for {idle_seconds} seconds.
-  Deliver a {hint_depth} hint at level {hint_level}.
-  Never give the answer. Never exceed the response budget.
-
-Rules:
-  - response_length_budget is a HARD constraint. Never exceed it.
-  - Never reveal ground_truth_answer.
-  - Feedback must name the exact error type from error_taxonomy[].
-  - Tone: calm and encouraging for stress_level=2, neutral otherwise.
-
-
-================================================================================
-ADAPTATION LOGIC (reference — implement in Sprint 3)
-================================================================================
-
-Idle threshold trigger:
-  ADHD or stress_level=2  → 60s
-  Default                 → 90s
-  Advanced (tier=3)       → 180s
-
-Error threshold trigger:
-  ADHD or stressed → 2 consecutive errors
-  Default          → 3
-  Advanced         → 4
-
-Hint depth flip:
-  Two consecutive absorbed=false → set hint_depth_preference = 'concrete'
-  Resets per topic (not globally)
-
-Skill tier update (hysteresis — 2 consecutive events required):
-  solved with 0 hints    → consecutive_up++. If reaches 2 → tier up, reset counter
-  hint budget exhausted  → consecutive_down++. If reaches 2 → tier down, reset counter
-  solved with hints used → reset both counters, no tier change
-
-Self-report weight decay:
-  self_report_weight = max(0.2, 0.8 - 0.1 × sessions_completed)
-
-Stress blend:
-  stress_level = round(
-    self_report_weight × checkin_numeric +
-    (1 - self_report_weight) × behavioral_stress_score
-  )
+Full rules + Planning-First workflow: docs/working-style.md
+Student profiles (Alex / Jordan / Priya):  docs/student-profiles.md
 
 
 ================================================================================

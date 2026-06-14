@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
 import { getSession, setSession } from '../../redis/session-store';
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+import { isAnswerCorrect } from '../../services/answer-checker';
 import { updateSkillTier } from '../../services/skill-updater';
 import { updateConsecutiveErrors } from '../../services/cognitive-state';
 import { checkAfterSubmit } from '../../services/adaptive-engine';
@@ -84,6 +86,12 @@ export async function submitAnswer(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // session_id is client-supplied: attempts must never land on another student's session.
+  if (!(await sessionBelongsToStudent(session_id, studentId))) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+
   const problemResult = await pool.query<{
     topic: string;
     ground_truth_answer: number;
@@ -97,10 +105,12 @@ export async function submitAnswer(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const problem     = problemResult.rows[0];
-  const groundTruth = Number(problem.ground_truth_answer);
-  const submitted   = Number(submitted_answer);
-  const correct     = Math.abs(submitted - groundTruth) / groundTruth <= problem.tolerance;
+  const problem = problemResult.rows[0];
+  const correct = isAnswerCorrect(
+    Number(submitted_answer),
+    Number(problem.ground_truth_answer),
+    problem.tolerance,
+  );
 
   const skillRow = await pool.query<{ tier: number }>(
     'SELECT tier FROM student_skills WHERE student_id=$1 AND topic=$2',

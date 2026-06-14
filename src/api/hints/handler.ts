@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
 import { getSession, setSession } from '../../redis/session-store';
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
 import { streamHint, type HintRequest, type HintTrigger } from '../../services/ai-tutor';
 
 const VALID_TRIGGERS: ReadonlySet<HintTrigger> = new Set(['idle', 'error_streak', 'hint_budget_exhausted', 'manual']);
@@ -24,6 +25,13 @@ export async function postHint(req: Request, res: Response): Promise<void> {
   }
   const triggerType: HintTrigger = trigger_type && VALID_TRIGGERS.has(trigger_type) ? trigger_type : 'manual';
 
+  // session_id is client-supplied: hints must not read or bill against another
+  // student's session, and hint_events must not be attributed to it.
+  if (!(await sessionBelongsToStudent(session_id, studentId))) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+
   const session = await getSession(session_id);
   if (!session) {
     res.status(404).json({ error: 'Session not found' });
@@ -37,7 +45,11 @@ export async function postHint(req: Request, res: Response): Promise<void> {
   const hintBudget = configRow.rows[0]?.hint_budget ?? 3;
   const hintsUsed = session.hints_used_this_problem ?? 0;
 
-  if (hintsUsed >= hintBudget && triggerType !== 'hint_budget_exhausted') {
+  // The budget holds for every trigger. trigger_type is client-supplied and only
+  // shapes prompt phrasing — it must never bypass the cap (the server-driven
+  // exhausted-budget intervention resets hints_used at submit, so its follow-up
+  // hint passes this check without an exception).
+  if (hintsUsed >= hintBudget) {
     res.status(409).json({ error: 'Hint budget exhausted for this problem' });
     return;
   }
@@ -67,11 +79,9 @@ export async function postHint(req: Request, res: Response): Promise<void> {
       const next = await gen.next();
       if (next.done) {
         const ctx = next.value;
-        if (!aborted) {
-          res.write(`event: done\ndata: ${JSON.stringify({ hint_id: ctx.hintId, hint_level: ctx.hintLevel, hint_depth: ctx.hintDepth, response_budget: ctx.responseBudget })}\n\n`);
-          res.end();
-        }
 
+        // Persist state before closing the connection so the next request
+        // always sees the updated hint count (avoids a race with concurrent requests).
         await pool.query(
           `INSERT INTO hint_events
              (session_id, problem_id, student_id, hint_level, hint_depth, absorbed)
@@ -88,6 +98,11 @@ export async function postHint(req: Request, res: Response): Promise<void> {
           ],
           hints_used_this_problem: hintsUsed + 1,
         });
+
+        if (!aborted) {
+          res.write(`event: done\ndata: ${JSON.stringify({ hint_id: ctx.hintId, hint_level: ctx.hintLevel, hint_depth: ctx.hintDepth, response_budget: ctx.responseBudget })}\n\n`);
+          res.end();
+        }
         return;
       }
 

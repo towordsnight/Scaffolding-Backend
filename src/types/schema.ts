@@ -28,6 +28,15 @@ export interface Student {
   course_level: CourseLevel;
   learner_profile: LearnerProfile | null;
   sessions_completed: number;
+  // Onboarding survey: raw 1–5 construct averages. NULL until declaration.
+  attention_score: number | null;
+  autonomy_score: number | null;
+  competence_score: number | null;
+  self_regulation_score: number | null;
+  self_efficacy_score: number | null;
+  // Profile classification output. NULL until declaration.
+  profile_confidence: number | null;
+  classification_flag: string | null;
   created_at: Date;
   updated_at: Date;
 }

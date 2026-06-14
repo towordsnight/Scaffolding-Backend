@@ -5,13 +5,18 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:all": "concurrently -n backend,frontend -c blue,green \"npm run dev\" \"npm run dev:frontend\"",
     "build": "tsc",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:all": "npm run build:frontend && npm run build",
     "start": "node dist/index.js",
     "migrate": "node --import tsx src/db/migrate.ts",
     "import-problems": "node --import tsx scripts/import-problems.ts",
     "import-thevenin": "node --import tsx scripts/import-thevenin-problem.ts",
     "seed-cohort-priors": "node --import tsx scripts/seed-cohort-priors.ts",
     "test": "jest --runInBand",
+    "test:integration": "jest --config jest.integration.config.js --runInBand --forceExit",
     "test:watch": "jest --watch",
     "test:file": "jest --testPathPattern",
     "test:adaptive": "node --import tsx scripts/test-adaptive-system.ts",
@@ -26,6 +31,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.5.2",
     "helmet": "^7.1.0",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
@@ -41,6 +47,7 @@
     "@types/node": "^20.14.0",
     "@types/pg": "^8.11.6",
     "@types/supertest": "^6.0.2",
+    "concurrently": "^10.0.0",
     "jest": "^29.7.0",
     "supertest": "^7.0.0",
     "ts-jest": "^29.1.5",
@@ -52,6 +59,10 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/*.test.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "\\.integration\\.test\\.ts$"
     ],
     "setupFiles": [
       "dotenv/config"

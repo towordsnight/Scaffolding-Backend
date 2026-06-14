@@ -36,6 +36,15 @@ CREATE TABLE students (
     course_level        course_level NOT NULL DEFAULT 'intro',
     learner_profile     learner_profile,                 -- NULL until set during onboarding
     sessions_completed  INTEGER NOT NULL DEFAULT 0,
+    -- Onboarding survey construct scores: raw 1–5 averages. NULL until declaration.
+    attention_score       REAL CHECK (attention_score       BETWEEN 1 AND 5),
+    autonomy_score        REAL CHECK (autonomy_score        BETWEEN 1 AND 5),
+    competence_score      REAL CHECK (competence_score      BETWEEN 1 AND 5),
+    self_regulation_score REAL CHECK (self_regulation_score BETWEEN 1 AND 5),
+    self_efficacy_score   REAL CHECK (self_efficacy_score   BETWEEN 1 AND 5),
+    -- Profile classification output. NULL until declaration.
+    profile_confidence    REAL CHECK (profile_confidence BETWEEN 0 AND 1),
+    classification_flag   TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -101,6 +110,7 @@ CREATE TABLE sessions (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id              UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     current_problem_id      UUID REFERENCES problems(id) ON DELETE SET NULL,
+    current_step_id         UUID,  -- FK added after problem_steps is defined (see ALTER TABLE below)
     current_problem_state   JSONB NOT NULL DEFAULT '{}',
     hint_history            JSONB NOT NULL DEFAULT '[]',
     started_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -211,6 +221,11 @@ CREATE TABLE problem_steps (
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (variant_id, step_order)
 );
+
+-- Add the forward-reference FK from sessions now that problem_steps exists.
+ALTER TABLE sessions
+    ADD CONSTRAINT sessions_step_id_fkey
+    FOREIGN KEY (current_step_id) REFERENCES problem_steps(id) ON DELETE SET NULL;
 
 CREATE TABLE problem_step_attempts (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

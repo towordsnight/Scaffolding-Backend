@@ -8,6 +8,18 @@ jest.mock('../../db/client', () => ({
   default: { query: jest.fn() },
 }));
 
+jest.mock('../../redis/session-store', () => ({
+  getSession: jest.fn().mockResolvedValue(null),
+  setSession: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('../../db/queries/sessions', () => ({
+  sessionBelongsToStudent: jest.fn().mockResolvedValue(true),
+}));
+
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+const mockSessionOwned = sessionBelongsToStudent as jest.MockedFunction<typeof sessionBelongsToStudent>;
+
 const mockPool = pool as jest.Mocked<typeof pool>;
 
 function makeRes(): jest.Mocked<Response> {
@@ -102,6 +114,22 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
+  it('returns 404 when the session belongs to another student', async () => {
+    mockSessionOwned.mockResolvedValueOnce(false);
+    const req = {
+      params: { id: 'p1', stepId: 'step-1' },
+      body: { session_id: 's-other', submitted_value: 'A', time_spent_s: 5 },
+      studentId: 'stu-1',
+    } as unknown as AuthRequest;
+    const res = makeRes();
+    await submitStep(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockPool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO problem_step_attempts'),
+      expect.anything(),
+    );
+  });
+
   it('returns 404 when step does not belong to the problem', async () => {
     (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [] });
     const req = {
@@ -128,7 +156,9 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
           tolerance: null,
         }],
       })
-      .mockResolvedValueOnce({ rows: [] }); // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // SELECT next step
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE session current_step_id
     const req = {
       params: { id: 'p1', stepId: 'step-1' },
       body: { session_id: 's1', submitted_value: 'A', time_spent_s: 4 },
@@ -154,7 +184,8 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
           tolerance: null,
         }],
       })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ attempts_used: 1 }] });
     const req = {
       params: { id: 'p1', stepId: 'step-1' },
       body: { session_id: 's1', submitted_value: 'B', time_spent_s: 4 },
@@ -163,7 +194,46 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
     const res = makeRes();
     await submitStep(req, res);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ correct: false, ungraded: false }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      correct: false,
+      ungraded: false,
+      attempt_budget: 5,
+      attempts_used: 1,
+      attempts_remaining: 4,
+    }));
+    expect(mockPool.query).toHaveBeenCalledWith(expect.stringContaining('COUNT(*)::int'), ['s1', 'stu-1', 'step-1']);
+  });
+
+  it('floors attempts_remaining at 0 when incorrect attempts exceed the budget', async () => {
+    (mockPool.query as jest.Mock)
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'step-1',
+          step_type: 'mcq',
+          options: [
+            { key: 'A', text: 'Nodal', is_correct: true  },
+            { key: 'B', text: 'Mesh',  is_correct: false },
+          ],
+          ground_truth_answer: null,
+          tolerance: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ attempts_used: 6 }] });
+    const req = {
+      params: { id: 'p1', stepId: 'step-1' },
+      body: { session_id: 's1', submitted_value: 'B', time_spent_s: 4 },
+      studentId: 'stu-1',
+    } as unknown as AuthRequest;
+    const res = makeRes();
+    await submitStep(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      correct: false,
+      attempt_budget: 5,
+      attempts_used: 6,
+      attempts_remaining: 0,
+    }));
   });
 
   it('numeric: marks correct within tolerance', async () => {
@@ -177,6 +247,8 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
           tolerance: 0.01,
         }],
       })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
     const req = {
       params: { id: 'p1', stepId: 'step-9' },
@@ -200,6 +272,8 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
           tolerance: 0.01,
         }],
       })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
     const req = {
       params: { id: 'p1', stepId: 'step-vth' },
@@ -223,6 +297,8 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
           tolerance: null,
         }],
       })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
     const req = {
       params: { id: 'p1', stepId: 'step-0' },

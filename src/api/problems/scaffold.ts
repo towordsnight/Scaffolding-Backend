@@ -8,7 +8,11 @@ import { Request, Response } from 'express';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
 import { getSession, setSession } from '../../redis/session-store';
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+import { isAnswerCorrect } from '../../services/answer-checker';
 import type { LearnerProfile, McqOption, StepType } from '../../types/schema';
+
+const STEP_ATTEMPT_BUDGET = 5;
 
 // Public step shape — never expose ground_truth_answer or option.is_correct.
 interface PublicStep {
@@ -28,18 +32,37 @@ export async function getScaffold(req: Request, res: Response): Promise<void> {
     'SELECT learner_profile FROM students WHERE id=$1',
     [studentId],
   );
-  const profile = studentRow.rows[0]?.learner_profile;
-  if (!profile) {
-    res.status(400).json({ error: 'learner_profile not set. Complete onboarding declaration first.' });
-    return;
-  }
+  // Default to 'starter' when onboarding declaration has not been completed yet.
+  const profile: LearnerProfile = studentRow.rows[0]?.learner_profile ?? 'starter';
 
-  const variantRow = await pool.query<{ id: string }>(
+  // Try the student's own profile first; fall back to 'starter' so problems are
+  // always accessible before a full variant library is seeded.
+  let variantRow = await pool.query<{ id: string }>(
     'SELECT id FROM problem_variants WHERE problem_id=$1 AND learner_profile=$2',
     [problemId, profile],
   );
+  if (variantRow.rows.length === 0 && profile !== 'starter') {
+    variantRow = await pool.query<{ id: string }>(
+      'SELECT id FROM problem_variants WHERE problem_id=$1 AND learner_profile=$2',
+      [problemId, 'starter'],
+    );
+  }
+  // No variant of any kind — return empty steps so the frontend degrades gracefully.
   if (variantRow.rows.length === 0) {
-    res.status(404).json({ error: 'No scaffold variant exists for this problem and learner profile' });
+    const { session_id } = req.query as { session_id?: string };
+    let currentStepId: string | null = null;
+    if (session_id) {
+      const redisSession = await getSession(session_id);
+      currentStepId = redisSession?.current_step_id ?? null;
+    }
+    res.status(200).json({
+      problem_id: problemId,
+      variant_id: null,
+      learner_profile: profile,
+      total_steps: 0,
+      current_step_id: currentStepId,
+      steps: [],
+    });
     return;
   }
   const variantId = variantRow.rows[0].id;
@@ -69,7 +92,7 @@ export async function getScaffold(req: Request, res: Response): Promise<void> {
   }));
 
   // If the caller provides a session_id, include the active step position.
-  const { session_id } = req.query as { session_id?: string };
+  const { session_id } = (req.query ?? {}) as { session_id?: string };
   let currentStepId: string | null = null;
   if (session_id) {
     const redisSession = await getSession(session_id);
@@ -99,6 +122,13 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
 
   if (!session_id || submitted_value === undefined || time_spent_s === undefined) {
     res.status(400).json({ error: 'session_id, submitted_value, and time_spent_s are required' });
+    return;
+  }
+
+  // session_id is client-supplied: step attempts and the sessions.current_step_id
+  // write below must never touch another student's session.
+  if (!(await sessionBelongsToStudent(session_id, studentId))) {
+    res.status(404).json({ error: 'Session not found' });
     return;
   }
 
@@ -135,14 +165,11 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
       if (step.ground_truth_answer === null) {
         correct = null;                                              // ungraded placeholder
       } else {
-        const submitted   = Number(submitted_value);
-        const groundTruth = Number(step.ground_truth_answer);
-        const tolerance   = step.tolerance ?? 0.01;
-        if (!Number.isFinite(submitted) || groundTruth === 0) {
-          correct = !Number.isFinite(submitted) ? false : submitted === 0;
-        } else {
-          correct = Math.abs(submitted - groundTruth) / Math.abs(groundTruth) <= tolerance;
-        }
+        correct = isAnswerCorrect(
+          Number(submitted_value),
+          Number(step.ground_truth_answer),
+          step.tolerance ?? 0.01,
+        );
       }
       break;
     }
@@ -158,6 +185,25 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [session_id, studentId, stepId, String(submitted_value), correct, time_spent_s],
   );
+
+  let attemptMetadata = {};
+  if (correct === false) {
+    const attemptRow = await pool.query<{ attempts_used: number }>(
+      `SELECT COUNT(*)::int AS attempts_used
+         FROM problem_step_attempts
+        WHERE session_id = $1
+          AND student_id = $2
+          AND step_id = $3
+          AND correct = false`,
+      [session_id, studentId, stepId],
+    );
+    const attemptsUsed = Number(attemptRow.rows[0]?.attempts_used ?? 0);
+    attemptMetadata = {
+      attempt_budget: STEP_ATTEMPT_BUDGET,
+      attempts_used: attemptsUsed,
+      attempts_remaining: Math.max(0, STEP_ATTEMPT_BUDGET - attemptsUsed),
+    };
+  }
 
   // Advance current_step_id in Redis when the answer is accepted (correct or ungraded).
   let nextStepId: string | null = null;
@@ -189,5 +235,6 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
     ungraded: correct === null,
     next_step_id: correct !== false ? nextStepId : null,
     misconception_hint: null,                                        // wired in Sprint 3
+    ...attemptMetadata,
   });
 }

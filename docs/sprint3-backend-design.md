@@ -240,3 +240,76 @@ Response: `Content-Type: text/event-stream` — SSE chunks until `[DONE]`.
 - [ ] **Absorption window undefined:** `hint_events.absorbed` is set on the next submit, but the maximum eligible window (e.g., within 5 minutes = absorbed, else null) is not specified. Needs a concrete cutoff before implementation.
 - [ ] **`hint_depth_preference` reset condition:** CLAUDE.md defines the flip trigger ("two consecutive `absorbed=false` → set `concrete`") but not the reset-to-`socratic` condition.
 - [ ] **No per-student API rate limit:** A rapid hint-request loop could exhaust Anthropic credits. Guard: enforce `hint_budget` from `adaptive_config` at the handler level before calling the API.
+
+---
+
+---
+
+## 14. AI Prompt Template
+
+```
+System:
+  You are a circuit analysis tutor.
+  Problem: {problem_text}
+  Topic: {topic}
+  Student tier: {skill[topic]}
+  Hint depth: {hint_depth_preference}   [socratic | concrete]
+  Response budget: {response_length_budget} sentences maximum.
+  Error taxonomy for this problem: {error_taxonomy[]}
+  Student's current work: {current_problem_state}
+
+User:
+  The student has been idle for {idle_seconds} seconds.
+  Deliver a {hint_depth} hint at level {hint_level}.
+  Never give the answer. Never exceed the response budget.
+
+Rules:
+  - response_length_budget is a HARD constraint. Never exceed it.
+  - Never reveal ground_truth_answer.
+  - Feedback must name the exact error type from error_taxonomy[].
+  - Tone: calm and encouraging for stress_level=2, neutral otherwise.
+```
+
+---
+
+---
+
+## 15. Adaptation Logic
+
+**Idle threshold trigger:**
+
+| Condition | Threshold |
+|-----------|-----------|
+| ADHD or stress_level=2 | 60s |
+| Default | 90s |
+| Advanced (tier=3) | 180s |
+
+**Error threshold trigger:**
+
+| Condition | Threshold |
+|-----------|-----------|
+| ADHD or stressed | 2 consecutive errors |
+| Default | 3 |
+| Advanced | 4 |
+
+**Hint depth flip:**
+Two consecutive `absorbed=false` → set `hint_depth_preference = 'concrete'`.
+Resets per topic (not globally).
+
+**Skill tier update (hysteresis — 2 consecutive events required):**
+- Solved with 0 hints → `consecutive_up++`. If reaches 2 → tier up, reset counter.
+- Hint budget exhausted → `consecutive_down++`. If reaches 2 → tier down, reset counter.
+- Solved with hints used → reset both counters, no tier change.
+
+**Self-report weight decay:**
+```
+self_report_weight = max(0.2, 0.8 - 0.1 × sessions_completed)
+```
+
+**Stress blend:**
+```
+stress_level = round(
+  self_report_weight × checkin_numeric +
+  (1 - self_report_weight) × behavioral_stress_score
+)
+```
