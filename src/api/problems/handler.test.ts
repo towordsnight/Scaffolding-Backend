@@ -25,6 +25,13 @@ jest.mock('../../services/adaptive-engine', () => ({
   checkAfterSubmit: jest.fn().mockResolvedValue(null),
 }));
 
+jest.mock('../../db/queries/sessions', () => ({
+  sessionBelongsToStudent: jest.fn().mockResolvedValue(true),
+}));
+
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+const mockSessionOwned = sessionBelongsToStudent as jest.MockedFunction<typeof sessionBelongsToStudent>;
+
 const mockPool = pool as jest.Mocked<typeof pool>;
 
 function makeRes(): jest.Mocked<Response> {
@@ -117,6 +124,23 @@ describe('POST /api/problems/:id/submit', () => {
     const res = makeRes();
     await submitAnswer(req, res);
     expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('returns 404 when the session belongs to another student', async () => {
+    mockSessionOwned.mockResolvedValueOnce(false);
+    const req = {
+      params: { id: 'p1' },
+      body: { session_id: 's-other', submitted_answer: 9, time_spent_s: 30 },
+      studentId: 'stu-1',
+    } as unknown as AuthRequest;
+    const res = makeRes();
+    await submitAnswer(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    // Nothing may be written when ownership fails.
+    expect(mockPool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO problem_attempts'),
+      expect.anything(),
+    );
   });
 
   it('returns 200 with correct=true and intervention=null when within tolerance', async () => {

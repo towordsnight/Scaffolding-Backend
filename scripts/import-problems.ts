@@ -139,12 +139,20 @@ const problems = [
 ];
 
 async function main() {
+  const force = process.argv.includes('--force');
   const client = await pool.connect();
   try {
     const existing = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM problems');
-    if (parseInt(existing.rows[0].count, 10) > 0) {
+    if (parseInt(existing.rows[0].count, 10) > 0 && !force) {
       console.log(`Problem bank already seeded (${existing.rows[0].count} rows). Run with --force to re-seed.`);
       return;
+    }
+    if (force) {
+      // TRUNCATE bypasses the append-only DO INSTEAD NOTHING rules on audit tables.
+      // CASCADE handles problem_variants and problem_steps automatically.
+      await client.query('TRUNCATE problem_step_attempts, hint_events, problem_attempts, sessions RESTART IDENTITY CASCADE');
+      await client.query('TRUNCATE problems RESTART IDENTITY CASCADE');
+      console.log('Cleared existing problems and dependent rows.');
     }
 
     let inserted = 0;

@@ -8,6 +8,8 @@ import { Request, Response } from 'express';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
 import { getSession, setSession } from '../../redis/session-store';
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+import { isAnswerCorrect } from '../../services/answer-checker';
 import type { LearnerProfile, McqOption, StepType } from '../../types/schema';
 
 const STEP_ATTEMPT_BUDGET = 5;
@@ -123,6 +125,13 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // session_id is client-supplied: step attempts and the sessions.current_step_id
+  // write below must never touch another student's session.
+  if (!(await sessionBelongsToStudent(session_id, studentId))) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+
   // Verify step belongs to the problem in the URL — cross-problem step IDs are rejected.
   const stepRow = await pool.query<{
     id: string;
@@ -156,14 +165,11 @@ export async function submitStep(req: Request, res: Response): Promise<void> {
       if (step.ground_truth_answer === null) {
         correct = null;                                              // ungraded placeholder
       } else {
-        const submitted   = Number(submitted_value);
-        const groundTruth = Number(step.ground_truth_answer);
-        const tolerance   = step.tolerance ?? 0.01;
-        if (!Number.isFinite(submitted) || groundTruth === 0) {
-          correct = !Number.isFinite(submitted) ? false : submitted === 0;
-        } else {
-          correct = Math.abs(submitted - groundTruth) / Math.abs(groundTruth) <= tolerance;
-        }
+        correct = isAnswerCorrect(
+          Number(submitted_value),
+          Number(step.ground_truth_answer),
+          step.tolerance ?? 0.01,
+        );
       }
       break;
     }

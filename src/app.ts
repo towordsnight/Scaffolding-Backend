@@ -5,6 +5,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 
+import { errorHandler } from './api/error-handling';
 import authRouter from './api/auth/router';
 import eventsRouter from './api/events/router';
 import onboardingRouter from './api/onboarding/router';
@@ -14,6 +15,11 @@ import hintsRouter from './api/hints/router';
 import homeworkSetsRouter from './api/homework-sets/router';
 
 const app = express();
+
+// One proxy hop (Railway) terminates TLS in front of us. Without this, req.ip is
+// the proxy's address: rate limits would share one bucket across all users and
+// the consent log would hash the proxy IP instead of the client's.
+app.set('trust proxy', 1);
 
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL ?? 'http://localhost:5173', credentials: true }));
@@ -38,5 +44,8 @@ if (process.env.NODE_ENV !== 'test') {
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
+
+// Must be last: catches errors forwarded by asyncHandler from any route.
+app.use(errorHandler);
 
 export default app;

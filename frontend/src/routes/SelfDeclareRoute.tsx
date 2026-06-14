@@ -2,86 +2,139 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, onboarding, type CourseLevel } from '../lib/api';
 
-type Likert = 'never' | 'rarely' | 'sometimes' | 'often' | 'very_often';
-const LIKERT_OPTIONS: Array<{ value: Likert; label: string }> = [
-  { value: 'never',      label: 'never' },
-  { value: 'rarely',     label: 'rarely' },
-  { value: 'sometimes',  label: 'sometimes' },
-  { value: 'often',      label: 'often' },
-  { value: 'very_often', label: 'very often' },
-];
+// Attention section uses a frequency scale; the other four use an agreement scale.
+type ScaleType = 'frequency' | 'agreement';
 
-// `reverse: true` means the statement is positively-framed (high Likert = LOW stress).
-interface Question { id: string; text: string; reverse?: boolean }
-interface Section { title: string; questions: Question[] }
+const FREQUENCY_OPTIONS = [
+  { value: 'f1', label: 'never',      numeric: 1 },
+  { value: 'f2', label: 'rarely',     numeric: 2 },
+  { value: 'f3', label: 'sometimes',  numeric: 3 },
+  { value: 'f4', label: 'often',      numeric: 4 },
+  { value: 'f5', label: 'very often', numeric: 5 },
+] as const;
+
+const AGREEMENT_OPTIONS = [
+  { value: 'a1', label: 'Strongly Disagree', numeric: 1 },
+  { value: 'a2', label: 'Disagree',          numeric: 2 },
+  { value: 'a3', label: 'Somewhat Agree',    numeric: 3 },
+  { value: 'a4', label: 'Agree',             numeric: 4 },
+  { value: 'a5', label: 'Strongly Agree',    numeric: 5 },
+] as const;
+
+type FrequencyValue = typeof FREQUENCY_OPTIONS[number]['value'];
+type AgreementValue = typeof AGREEMENT_OPTIONS[number]['value'];
+type AnswerValue = FrequencyValue | AgreementValue;
+
+interface Question { id: string; text: string }
+interface Section { key: string; title: string; scaleType: ScaleType; questions: Question[] }
 
 const SECTIONS: Section[] = [
   {
+    key: 'attention',
     title: 'Attention',
+    scaleType: 'frequency',
     questions: [
-      { id: 's1q1', text: 'I felt overwhelmed by work responsibilities' },
-      { id: 's1q2', text: 'I had time for personal hobbies and interests', reverse: true },
-      { id: 's1q3', text: 'I experienced work-related stress' },
-      { id: 's1q4', text: 'I maintained healthy boundaries between work and personal life', reverse: true },
-      { id: 's1q5', text: 'I felt burned out from work' },
+      { id: 'b1_1', text: 'I have difficulty keeping my attention to simple or repetitive coursework.' },
+      { id: 'b1_2', text: 'While doing the coursework, I have to repeat steps because I haven\'t paid attention.' },
+      { id: 'b1_3', text: 'I do coursework without paying close attention.' },
+      { id: 'b1_4', text: 'I find myself paying attention and thinking about something else at the same time.' },
+      { id: 'b1_5', text: 'During lectures or other class activities, my mind drifts away from what is happening.' },
     ],
   },
   {
-    title: 'Health and Wellness',
+    key: 'autonomy',
+    title: 'Autonomy',
+    scaleType: 'agreement',
     questions: [
-      { id: 's2q1', text: 'I exercised or engaged in physical activity', reverse: true },
-      { id: 's2q2', text: 'I got adequate sleep (7-8 hours)', reverse: true },
-      { id: 's2q3', text: 'I ate balanced and nutritious meals', reverse: true },
-      { id: 's2q4', text: 'I practiced stress management techniques', reverse: true },
-      { id: 's2q5', text: 'I felt energized and well-rested', reverse: true },
+      { id: 'au_1', text: 'I feel that the decisions I make about how to study and solve problems reflect how I want to learn.' },
+      { id: 'au_2', text: 'In my coursework, I do learning activities that really interest me.' },
+      { id: 'au_3', text: 'I feel that I have choice and freedom in how I approach and complete my homework, projects, and labs.' },
+      { id: 'au_4', text: 'I feel that the choices I make about my learning work well for me.' },
     ],
   },
   {
-    title: 'Social Connections',
+    key: 'competence',
+    title: 'Competence',
+    scaleType: 'agreement',
     questions: [
-      { id: 's3q1', text: 'I spent quality time with family and friends', reverse: true },
-      { id: 's3q2', text: 'I felt supported by my social network', reverse: true },
-      { id: 's3q3', text: 'I participated in social activities or events', reverse: true },
-      { id: 's3q4', text: 'I felt lonely or isolated' },
-      { id: 's3q5', text: 'I made new meaningful connections', reverse: true },
+      { id: 'co_1', text: 'I feel that I can do well on homework, projects, labs, and other learning activities.' },
+      { id: 'co_2', text: 'I feel capable of completing the assignments required in my coursework.' },
+      { id: 'co_3', text: 'I feel competent to achieve the learning objectives in my coursework.' },
+      { id: 'co_4', text: 'I feel that I can successfully solve challenging problems.' },
+    ],
+  },
+  {
+    key: 'self_regulation',
+    title: 'Self-Regulation',
+    scaleType: 'agreement',
+    questions: [
+      { id: 'sr_1', text: 'I consider different ways to solve a problem when I get stuck on homework, projects, or labs.' },
+      { id: 'sr_2', text: 'I usually make a plan for how I will complete projects and other assignments.' },
+      { id: 'sr_3', text: 'I stick to a plan when it is helping me complete my homework, projects, and other activities.' },
+      { id: 'sr_4', text: 'When my approach to an assignment is not helping me make progress, I adjust it to stay on track.' },
+    ],
+  },
+  {
+    key: 'self_efficacy',
+    title: 'Self-Efficacy',
+    scaleType: 'agreement',
+    questions: [
+      { id: 'se_1', text: 'I believe I can understand new and difficult concepts taught in my courses.' },
+      { id: 'se_2', text: 'I am confident that I can master the skills needed for my coursework.' },
+      { id: 'se_3', text: 'I am certain that I can successfully complete homework, projects, labs, and other learning activities.' },
+      { id: 'se_4', text: 'I am confident that I can apply course concepts in hands-on labs, projects, or design tasks.' },
     ],
   },
 ];
 
 const TOTAL_QUESTIONS = SECTIONS.reduce((n, s) => n + s.questions.length, 0);
-const LIKERT_SCORE: Record<Likert, number> = { never: 0, rarely: 1, sometimes: 2, often: 3, very_often: 4 };
 
-function deriveStressBaseline(answers: Record<string, Likert>): 0 | 1 | 2 {
-  // Average a 0-4 stress score across Section 1's items (reverse-scored where positive).
-  const items = SECTIONS[0].questions;
-  let sum = 0;
-  let count = 0;
-  for (const q of items) {
-    const a = answers[q.id];
-    if (!a) continue;
-    const raw = LIKERT_SCORE[a];
-    const score = q.reverse ? 4 - raw : raw;
-    sum += score;
-    count += 1;
+function numericFor(sectionKey: string, value: AnswerValue): number {
+  if (sectionKey === 'attention') {
+    return FREQUENCY_OPTIONS.find(o => o.value === value)?.numeric ?? 0;
   }
-  const avg = count === 0 ? 0 : sum / count;
-  if (avg >= 2.7) return 2;
-  if (avg >= 1.3) return 1;
-  return 0;
+  return AGREEMENT_OPTIONS.find(o => o.value === value)?.numeric ?? 0;
+}
+
+function deriveConstructScores(answers: Record<string, AnswerValue>): {
+  attention_score: number;
+  autonomy_score: number;
+  competence_score: number;
+  self_regulation_score: number;
+  self_efficacy_score: number;
+} {
+  const avg = (section: Section): number => {
+    const vals = section.questions
+      .map(q => answers[q.id])
+      .filter(Boolean)
+      .map(v => numericFor(section.key, v));
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  };
+
+  const byKey = Object.fromEntries(SECTIONS.map(s => [s.key, avg(s)]));
+
+  return {
+    attention_score:       byKey['attention'],
+    autonomy_score:        byKey['autonomy'],
+    competence_score:      byKey['competence'],
+    self_regulation_score: byKey['self_regulation'],
+    self_efficacy_score:   byKey['self_efficacy'],
+  };
 }
 
 export function SelfDeclareRoute() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
+  // step 0 = basics, steps 1–5 = survey sections
+  const [step, setStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [courseLevel, setCourseLevel] = useState<CourseLevel>('intro');
   const [adhdFlag, setAdhdFlag] = useState(false);
-  const [answers, setAnswers] = useState<Record<string, Likert>>({});
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const totalAnswered = useMemo(() => Object.keys(answers).length, [answers]);
 
-  function setAnswer(id: string, value: Likert) {
+  function setAnswer(id: string, value: AnswerValue) {
     setAnswers((prev) => ({ ...prev, [id]: value }));
   }
 
@@ -89,11 +142,11 @@ export function SelfDeclareRoute() {
     setSubmitting(true);
     setError(null);
     try {
-      const stressBaseline = deriveStressBaseline(answers);
+      const scores = deriveConstructScores(answers);
       await onboarding.declaration({
         adhd_flag: adhdFlag,
-        stress_baseline: stressBaseline,
         course_level: courseLevel,
+        ...scores,
       });
       navigate('/onboarding/diagnostic');
     } catch (err) {
@@ -128,12 +181,12 @@ export function SelfDeclareRoute() {
           answers={answers}
           totalAnswered={totalAnswered}
           onAnswer={setAnswer}
-          onPrev={() => setStep((step - 1) as 0 | 1 | 2)}
-          onNext={() => setStep((step + 1) as 2 | 3)}
+          onPrev={() => setStep((step - 1) as 0 | 1 | 2 | 3 | 4)}
+          onNext={() => setStep((step + 1) as 2 | 3 | 4 | 5)}
           onSubmit={handleSubmit}
           submitting={submitting}
           error={error}
-          isLast={step === 3}
+          isLast={step === 5}
         />
       )}
     </>
@@ -205,9 +258,9 @@ function BasicsStep({ courseLevel, adhdFlag, onCourseLevel, onAdhd, onNext }: Ba
 interface SurveyStepProps {
   section: Section;
   sectionIndex: number;
-  answers: Record<string, Likert>;
+  answers: Record<string, AnswerValue>;
   totalAnswered: number;
-  onAnswer: (id: string, value: Likert) => void;
+  onAnswer: (id: string, value: AnswerValue) => void;
   onPrev: () => void;
   onNext: () => void;
   onSubmit: () => void;
@@ -229,6 +282,7 @@ function SurveyStep({
   error,
   isLast,
 }: SurveyStepProps) {
+  const options = section.scaleType === 'frequency' ? FREQUENCY_OPTIONS : AGREEMENT_OPTIONS;
   const sectionAnswered = section.questions.filter((q) => answers[q.id]).length;
   const sectionComplete = sectionAnswered === section.questions.length;
 
@@ -253,10 +307,10 @@ function SurveyStep({
           <p className="mt-1 text-sm leading-5 tracking-[-0.01em] text-[#6A7282]">
             Overall Progress: {totalAnswered} of {TOTAL_QUESTIONS} questions answered
           </p>
-          <div className="mt-6 grid grid-cols-3 gap-2">
+          <div className="mt-6 grid grid-cols-5 gap-2">
             {SECTIONS.map((s, i) => (
               <div
-                key={s.title}
+                key={s.key}
                 className={[
                   'h-2 rounded-full',
                   i < sectionIndex && 'bg-[#00C950]',
@@ -273,18 +327,20 @@ function SurveyStep({
             {section.title}
           </h2>
           <p className="mt-2 text-base leading-6 tracking-[-0.02em] text-[#4A5565]">
-            Please read each statement carefully and select the frequency that best describes your experience.
+            Please read each statement carefully and select the option that best describes your experience.
           </p>
-          <p className="mt-8 text-lg leading-7 tracking-[-0.02em] text-[#364153]">
-            During the past 6 months,
-          </p>
+          {section.scaleType === 'frequency' && (
+            <p className="mt-8 text-lg leading-7 tracking-[-0.02em] text-[#364153]">
+              During the past 6 months,
+            </p>
+          )}
 
           <div className="mt-6 overflow-x-auto">
             <table className="w-full min-w-[715px] border-collapse border border-[#D1D5DC] text-base text-[#364153]">
               <thead>
                 <tr>
                   <th className="w-[200px] border border-[#D1D5DC] px-4 py-4 text-left font-normal" />
-                  {LIKERT_OPTIONS.map((opt) => (
+                  {options.map((opt) => (
                     <th
                       key={opt.value}
                       className="border border-[#D1D5DC] px-4 py-4 text-center font-normal"
@@ -300,14 +356,14 @@ function SurveyStep({
                     <td className="w-[200px] border border-[#D1D5DC] px-4 py-4 leading-6 tracking-[-0.02em]">
                       {q.text}
                     </td>
-                    {LIKERT_OPTIONS.map((opt) => (
+                    {options.map((opt) => (
                       <td key={opt.value} className="border border-[#D1D5DC] px-4 py-4 text-center">
                         <input
                           type="radio"
                           name={q.id}
                           value={opt.value}
                           checked={answers[q.id] === opt.value}
-                          onChange={() => onAnswer(q.id, opt.value)}
+                          onChange={() => onAnswer(q.id, opt.value as AnswerValue)}
                           className="size-6 cursor-pointer accent-[#364153]"
                           aria-label={`${q.text} - ${opt.label}`}
                         />

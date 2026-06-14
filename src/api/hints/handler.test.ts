@@ -20,6 +20,13 @@ jest.mock('../../services/ai-tutor', () => ({
   streamHint: jest.fn(),
 }));
 
+jest.mock('../../db/queries/sessions', () => ({
+  sessionBelongsToStudent: jest.fn().mockResolvedValue(true),
+}));
+
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+const mockSessionOwned = sessionBelongsToStudent as jest.MockedFunction<typeof sessionBelongsToStudent>;
+
 const mockPool = pool as jest.Mocked<typeof pool>;
 const mockGetSession = getSession as jest.MockedFunction<typeof getSession>;
 const mockSetSession = setSession as jest.MockedFunction<typeof setSession>;
@@ -72,6 +79,15 @@ describe('POST /api/hints', () => {
     const res = makeRes();
     await postHint(req, res);
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('returns 404 when the session belongs to another student', async () => {
+    mockSessionOwned.mockResolvedValueOnce(false);
+    const req = makeReq({ session_id: 's-other', problem_id: 'p1' });
+    const res = makeRes();
+    await postHint(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockStreamHint).not.toHaveBeenCalled();
   });
 
   it('returns 404 when session is missing', async () => {
@@ -143,22 +159,15 @@ describe('POST /api/hints', () => {
     }));
   });
 
-  it('allows a hint when triggerType=hint_budget_exhausted even at the cap', async () => {
+  it('returns 409 at the cap even when the client claims trigger_type=hint_budget_exhausted', async () => {
     mockGetSession.mockResolvedValue({ ...baseSession, hints_used_this_problem: 3 });
-    (mockPool.query as jest.Mock)
-      .mockResolvedValueOnce({ rows: [{ hint_budget: 3 }] })
-      .mockResolvedValueOnce({ rows: [] });
-    mockStreamHint.mockReturnValue(
-      fakeHintGen(['Final.'], {
-        hintId: 'h2', hintLevel: 4, hintDepth: 'concrete', responseBudget: 'medium',
-      }) as ReturnType<typeof streamHint>,
-    );
+    (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ hint_budget: 3 }] });
 
     const req = makeReq({ session_id: 's1', problem_id: 'p1', trigger_type: 'hint_budget_exhausted' });
     const res = makeRes();
     await postHint(req, res);
 
-    expect(res.status).not.toHaveBeenCalledWith(409);
-    expect(res.end).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(mockStreamHint).not.toHaveBeenCalled();
   });
 });

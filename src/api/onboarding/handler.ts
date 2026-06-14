@@ -2,7 +2,9 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
-import type { CourseLevel, LearnerProfile, Topic } from '../../types/schema';
+import type { CourseLevel, Topic } from '../../types/schema';
+import { classifyProfile, toLevel } from '../../services/profile-classifier';
+import { isAnswerCorrect } from '../../services/answer-checker';
 
 // Which 3 topics to use for cold-start diagnostics per course level
 const DIAGNOSTIC_TOPICS: Record<CourseLevel, Topic[]> = {
@@ -18,36 +20,56 @@ const DIAGNOSTIC_DIFFICULTY: Record<CourseLevel, string> = {
 };
 
 // POST /api/onboarding/declaration
-// Body: { adhd_flag, stress_baseline (0|1|2), course_level }
+// Body: { adhd_flag, course_level, attention_score, autonomy_score, competence_score,
+//         self_regulation_score, self_efficacy_score }
+// All five scores are raw 1–5 averages from the onboarding survey.
 // Constraint #2: consent_given_at must be set before this proceeds.
 export async function declaration(req: Request, res: Response): Promise<void> {
   const studentId = (req as AuthRequest).studentId;
-  const { adhd_flag, stress_baseline, course_level, learner_profile } = req.body as {
+  const {
+    adhd_flag,
+    course_level,
+    attention_score,
+    autonomy_score,
+    competence_score,
+    self_regulation_score,
+    self_efficacy_score,
+  } = req.body as {
     adhd_flag?: boolean;
-    stress_baseline?: number;
     course_level?: CourseLevel;
-    learner_profile?: LearnerProfile;
+    attention_score?: number;
+    autonomy_score?: number;
+    competence_score?: number;
+    self_regulation_score?: number;
+    self_efficacy_score?: number;
   };
 
-  if (adhd_flag === undefined || stress_baseline === undefined || !course_level) {
-    res.status(400).json({ error: 'adhd_flag, stress_baseline, and course_level are required' });
+  if (
+    adhd_flag === undefined ||
+    !course_level ||
+    attention_score === undefined ||
+    autonomy_score === undefined ||
+    competence_score === undefined ||
+    self_regulation_score === undefined ||
+    self_efficacy_score === undefined
+  ) {
+    res.status(400).json({
+      error: 'adhd_flag, course_level, attention_score, autonomy_score, competence_score, self_regulation_score, and self_efficacy_score are required',
+    });
     return;
   }
 
-  if (![0, 1, 2].includes(stress_baseline)) {
-    res.status(400).json({ error: 'stress_baseline must be 0, 1, or 2' });
-    return;
+  const rawScores = { attention_score, autonomy_score, competence_score, self_regulation_score, self_efficacy_score };
+  for (const [key, val] of Object.entries(rawScores)) {
+    if (typeof val !== 'number' || val < 1 || val > 5) {
+      res.status(400).json({ error: `${key} must be a number between 1 and 5` });
+      return;
+    }
   }
 
   const validLevels: CourseLevel[] = ['intro', 'intermediate', 'advanced'];
   if (!validLevels.includes(course_level)) {
     res.status(400).json({ error: 'course_level must be intro, intermediate, or advanced' });
-    return;
-  }
-
-  const validProfiles: LearnerProfile[] = ['starter', 'exploring', 'distracted', 'independent'];
-  if (learner_profile !== undefined && !validProfiles.includes(learner_profile)) {
-    res.status(400).json({ error: 'learner_profile must be starter, exploring, distracted, or independent' });
     return;
   }
 
@@ -61,13 +83,42 @@ export async function declaration(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // Compute adaptive thresholds at write time (Constraint #6)
-  const isHighNeed = Boolean(adhd_flag) || stress_baseline === 2;
+  // Classify student profile from raw construct averages
+  const classification = classifyProfile({
+    attentionDifficulty: attention_score,
+    autonomy:            autonomy_score,
+    competence:          competence_score,
+    selfRegulation:      self_regulation_score,
+    selfEfficacy:        self_efficacy_score,
+  });
+
+  // Derive Low/Medium/High levels for adaptive threshold computation (Constraint #6)
+  const attnLevel  = toLevel(attention_score);
+  const srLevel    = toLevel(self_regulation_score);
+  const autoLevel  = toLevel(autonomy_score);
+  const seLevel    = toLevel(self_efficacy_score);
   const isAdvanced = course_level === 'advanced';
-  const idleThreshold  = isHighNeed ? 60  : isAdvanced ? 180 : 90;
-  const errorThreshold = isHighNeed ? 2   : isAdvanced ? 4   : 3;
-  const hintBudget     = isHighNeed ? 4   : isAdvanced ? 2   : 3;
-  const responseLength = isHighNeed ? 'brief' : isAdvanced ? 'short' : 'medium';
+
+  // ADHD flag or high attention difficulty → high-need mode
+  const isHighNeed = Boolean(adhd_flag) || attnLevel === 'high';
+
+  // idle_threshold: self_regulation drives base (low=60s, med=90s, high=180s);
+  // high-need always floors to 60s.
+  const selfRegIdle   = srLevel === 'low' ? 60 : srLevel === 'medium' ? 90 : 180;
+  const idleThreshold = isHighNeed ? 60 : Math.min(selfRegIdle, isAdvanced ? 180 : 90);
+
+  const errorThreshold = isHighNeed ? 2 : isAdvanced ? 4 : 3;
+  const hintBudget     = isHighNeed ? 4 : isAdvanced ? 2 : 3;
+
+  // response_length: high-need → brief; high autonomy + not high-need → short; else medium.
+  const responseLength: 'brief' | 'short' | 'medium' =
+    isHighNeed ? 'brief' : autoLevel === 'high' ? 'short' : 'medium';
+
+  // hint_depth: low self-efficacy → concrete hints; otherwise socratic.
+  const hintDepth: 'concrete' | 'socratic' = seLevel === 'low' ? 'concrete' : 'socratic';
+
+  // stress_level for cognitive_state maps Low→0, Medium→1, High→2
+  const stressLevel = attnLevel === 'low' ? 0 : attnLevel === 'medium' ? 1 : 2;
 
   const client = await pool.connect();
   try {
@@ -75,14 +126,25 @@ export async function declaration(req: Request, res: Response): Promise<void> {
 
     await client.query(
       `UPDATE students
-          SET adhd_flag=$1, course_level=$2, learner_profile=COALESCE($3, learner_profile), updated_at=now()
-        WHERE id=$4`,
-      [Boolean(adhd_flag), course_level, learner_profile ?? null, studentId],
+          SET adhd_flag=$1, course_level=$2,
+              learner_profile=$3,
+              attention_score=$4, autonomy_score=$5, competence_score=$6,
+              self_regulation_score=$7, self_efficacy_score=$8,
+              profile_confidence=$9, classification_flag=$10,
+              updated_at=now()
+        WHERE id=$11`,
+      [
+        Boolean(adhd_flag), course_level, classification.assignedProfile,
+        attention_score, autonomy_score, competence_score,
+        self_regulation_score, self_efficacy_score,
+        classification.confidence, classification.flag,
+        studentId,
+      ],
     );
 
     await client.query(
       `UPDATE cognitive_state SET stress_level=$1, updated_at=now() WHERE student_id=$2`,
-      [stress_baseline, studentId],
+      [stressLevel, studentId],
     );
 
     await client.query(
@@ -91,6 +153,13 @@ export async function declaration(req: Request, res: Response): Promise<void> {
              response_length_budget=$4, updated_at=now()
        WHERE student_id=$5`,
       [idleThreshold, errorThreshold, hintBudget, responseLength, studentId],
+    );
+
+    // Set initial hint depth across all skill topics from self-efficacy level.
+    // Rows are pre-seeded on registration; this is a no-op when none exist yet.
+    await client.query(
+      `UPDATE student_skills SET hint_depth_preference=$1, updated_at=now() WHERE student_id=$2`,
+      [hintDepth, studentId],
     );
 
     await client.query('COMMIT');
@@ -224,9 +293,11 @@ export async function submitDiagnostic(req: Request, res: Response): Promise<voi
       }
 
       // Constraint #4: numeric tolerance, never string match
-      const groundTruth = Number(problem.ground_truth_answer);
-      const submitted   = Number(answer.submitted_answer);
-      const correct     = Math.abs(submitted - groundTruth) / groundTruth <= problem.tolerance;
+      const correct = isAnswerCorrect(
+        Number(answer.submitted_answer),
+        Number(problem.ground_truth_answer),
+        problem.tolerance,
+      );
 
       const skillRow = await client.query<{ tier: number }>(
         'SELECT tier FROM student_skills WHERE student_id=$1 AND topic=$2',

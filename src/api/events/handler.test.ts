@@ -8,6 +8,13 @@ jest.mock('../../db/client', () => ({
   default: { query: jest.fn(), connect: jest.fn() },
 }));
 
+jest.mock('../../db/queries/sessions', () => ({
+  sessionBelongsToStudent: jest.fn().mockResolvedValue(true),
+}));
+
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+const mockSessionOwned = sessionBelongsToStudent as jest.MockedFunction<typeof sessionBelongsToStudent>;
+
 const mockPool = pool as jest.Mocked<typeof pool>;
 
 function makeRes(): jest.Mocked<Response> {
@@ -36,6 +43,17 @@ describe('POST /api/events', () => {
     const res = makeRes();
     await logEvent(makeReq({ event_type: 'unknown', payload: {} }), res);
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('returns 404 when the payload session belongs to another student', async () => {
+    mockSessionOwned.mockResolvedValueOnce(false);
+    const res = makeRes();
+    await logEvent(makeReq({
+      event_type: 'problem_attempt',
+      payload: { session_id: 's-other', problem_id: 'p1', outcome: true, time_spent_s: 30 },
+    }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockPool.query).not.toHaveBeenCalled();
   });
 
   it('inserts problem_attempt and returns 204', async () => {

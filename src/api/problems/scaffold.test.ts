@@ -13,6 +13,13 @@ jest.mock('../../redis/session-store', () => ({
   setSession: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('../../db/queries/sessions', () => ({
+  sessionBelongsToStudent: jest.fn().mockResolvedValue(true),
+}));
+
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
+const mockSessionOwned = sessionBelongsToStudent as jest.MockedFunction<typeof sessionBelongsToStudent>;
+
 const mockPool = pool as jest.Mocked<typeof pool>;
 
 function makeRes(): jest.Mocked<Response> {
@@ -105,6 +112,22 @@ describe('POST /api/problems/:id/steps/:stepId/submit', () => {
     const res = makeRes();
     await submitStep(req, res);
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('returns 404 when the session belongs to another student', async () => {
+    mockSessionOwned.mockResolvedValueOnce(false);
+    const req = {
+      params: { id: 'p1', stepId: 'step-1' },
+      body: { session_id: 's-other', submitted_value: 'A', time_spent_s: 5 },
+      studentId: 'stu-1',
+    } as unknown as AuthRequest;
+    const res = makeRes();
+    await submitStep(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockPool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO problem_step_attempts'),
+      expect.anything(),
+    );
   });
 
   it('returns 404 when step does not belong to the problem', async () => {

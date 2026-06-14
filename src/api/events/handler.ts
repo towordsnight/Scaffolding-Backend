@@ -5,6 +5,7 @@
 import { Request, Response } from 'express';
 import pool from '../../db/client';
 import { AuthRequest } from '../auth/middleware';
+import { sessionBelongsToStudent } from '../../db/queries/sessions';
 import { updateFromCheckin } from '../../services/cognitive-state';
 
 type EventType =
@@ -24,6 +25,19 @@ export async function logEvent(req: Request, res: Response): Promise<void> {
   if (!event_type || !payload) {
     res.status(400).json({ error: 'event_type and payload are required' });
     return;
+  }
+
+  // A client-supplied session_id must belong to this student — these are
+  // append-only audit tables, so a cross-student row could never be removed.
+  // (Some tables allow a null session_id; absence is left to DB constraints.)
+  if (payload.session_id !== undefined && payload.session_id !== null) {
+    const owned =
+      typeof payload.session_id === 'string' &&
+      (await sessionBelongsToStudent(payload.session_id, studentId));
+    if (!owned) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
   }
 
   switch (event_type) {

@@ -127,9 +127,12 @@ export const onboarding = {
 
   declaration: (input: {
     adhd_flag: boolean;
-    stress_baseline: 0 | 1 | 2;
     course_level: CourseLevel;
-    learner_profile?: LearnerProfile;
+    attention_score: number;
+    autonomy_score: number;
+    competence_score: number;
+    self_regulation_score: number;
+    self_efficacy_score: number;
   }) => request<{ declared: true }>('/api/onboarding/declaration', {
     method: 'POST',
     body: JSON.stringify(input),
